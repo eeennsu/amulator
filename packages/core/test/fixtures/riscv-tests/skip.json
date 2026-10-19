@@ -1,0 +1,4 @@
+[
+  { "name": "rv32mi-p-breakpoint", "reason": "debug-trigger", "deferredTo": "later" },
+  { "name": "rv32mi-p-pmpaddr", "reason": "pmp", "deferredTo": "later" }
+]
