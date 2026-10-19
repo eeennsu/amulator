@@ -58,15 +58,19 @@ let dataDir: string;
 const servers: BridgeServer[] = [];
 const sockets: WebSocket[] = [];
 
-const start = async (maxSnapshotBytes?: number): Promise<BridgeServer> => {
-  const server = await startBridgeServer({ webRoot, dataDir, maxSnapshotBytes });
+const start = async (
+  options: { maxSnapshotBytes?: number; connectWaitMs?: number } = {},
+): Promise<BridgeServer> => {
+  const server = await startBridgeServer({ webRoot, dataDir, ...options });
   servers.push(server);
   return server;
 };
 
 const connectPage = (
   server: BridgeServer,
-  options: { token?: string; origin?: string; pathname?: string } = {},
+  // `result` makes the page answer from the first frame; attaching a listener after the connect
+  // promise resolves could miss a request the server sent the moment the tab connected.
+  options: { token?: string; origin?: string; pathname?: string; result?: unknown } = {},
 ): Promise<WebSocket> =>
   new Promise((resolve, reject) => {
     const url = `ws://127.0.0.1:${server.port}${options.pathname ?? '/bridge'}?token=${options.token ?? server.token}`;
@@ -74,6 +78,7 @@ const connectPage = (
       origin: options.origin ?? `http://127.0.0.1:${server.port}`,
     });
     sockets.push(socket);
+    if (options.result !== undefined) answerWith(socket, options.result);
     socket.once('open', () => resolve(socket));
     socket.once('error', reject);
   });
@@ -183,11 +188,36 @@ describe('websocket bridge', () => {
     expect(ids[1]).toBe((ids[0] ?? 0) + 1);
   });
 
-  it('rejects with a hint to call emulator_open when no tab is connected', async () => {
-    const server = await start();
+  it('rejects with the not-connected error once the connect wait runs out', async () => {
+    const server = await start({ connectWaitMs: 100 });
+    const started = Date.now();
     const failure = server.request('tap', { x: 1, y: 2 });
     await expect(failure).rejects.toBeInstanceOf(BridgeDisconnectedError);
     await expect(failure).rejects.toThrow('emulator_open');
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+
+  it('waits for a tab that connects after the request was issued', async () => {
+    const server = await start({ connectWaitMs: 5_000 });
+    const answer = server.request('tap', { x: 1, y: 2 });
+    await connectPage(server, { result: { ok: true } });
+    await expect(answer).resolves.toEqual({ ok: true });
+  });
+
+  it('starts the response timeout when the request is sent, not when it was issued', async () => {
+    const server = await start({ connectWaitMs: 5_000 });
+    const answer = server.request('tap', { x: 1, y: 2 }, 200);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    await connectPage(server, { result: { ok: true } });
+    await expect(answer).resolves.toEqual({ ok: true });
+  });
+
+  it('fails a request that is still waiting for a tab when the server closes', async () => {
+    const server = await start({ connectWaitMs: 5_000 });
+    const waiting = server.request('tap', { x: 1, y: 2 });
+    const failure = expect(waiting).rejects.toThrow('closed');
+    await server.close();
+    await failure;
   });
 
   it('rejects with BridgeTimeoutError when the page does not answer', async () => {
@@ -312,7 +342,7 @@ describe('snapshot endpoint', () => {
   });
 
   it('stores bytes under <dataDir>/<key>.amus.gz and returns them', async () => {
-    const server = await start(1024);
+    const server = await start({ maxSnapshotBytes: 1024 });
     const bytes = Buffer.from([0x1f, 0x8b, 0, 1, 2, 3, 255]);
     const put = await send(server.port, {
       method: 'PUT',
@@ -343,7 +373,7 @@ describe('snapshot endpoint', () => {
   });
 
   it('answers 413 when the declared length is over the limit', async () => {
-    const server = await start(1024);
+    const server = await start({ maxSnapshotBytes: 1024 });
     const result = await send(server.port, {
       method: 'PUT',
       path: `/snapshots/${KEY}`,
@@ -355,7 +385,7 @@ describe('snapshot endpoint', () => {
   });
 
   it('answers 413 for a chunked body that grows past the limit and leaves no file behind', async () => {
-    const server = await start(1024);
+    const server = await start({ maxSnapshotBytes: 1024 });
     const result = await send(server.port, {
       method: 'PUT',
       path: `/snapshots/${KEY}`,
@@ -367,7 +397,7 @@ describe('snapshot endpoint', () => {
   });
 
   it('keeps the previous snapshot when a replacement is too large', async () => {
-    const server = await start(1024);
+    const server = await start({ maxSnapshotBytes: 1024 });
     const url = `/snapshots/${KEY}`;
     await send(server.port, {
       method: 'PUT',

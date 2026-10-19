@@ -24,6 +24,8 @@ export class BridgeDisconnectedError extends Error {}
 export class BridgePageError extends Error {}
 
 export const BRIDGE_TIMEOUT_MS = 10_000;
+// How long a request waits for a tab to connect before failing with the not-connected error.
+export const CONNECT_WAIT_MS = 5_000;
 export const MAX_SNAPSHOT_BYTES = 256 * 1024 * 1024;
 
 export const PROGRAMS = ['hello', 'clock', 'paint'] as const;
@@ -51,7 +53,9 @@ const SNAPSHOT_SUFFIX = '.amus.gz';
 const MAX_FRAME_BYTES = 16 * 1024 * 1024;
 const CLOSE_REPLACED = 4000;
 const TEMP_REMOVE_RETRIES = 5;
-const NOT_CONNECTED = 'No emulator tab is connected. Call emulator_open first.';
+const NOT_CONNECTED =
+  'No emulator tab is connected. If you just called emulator_open, the tab may still be loading — ' +
+  'retry in a few seconds. Call emulator_open again only if no browser tab was opened.';
 
 const HTTP = {
   ok: 200,
@@ -85,6 +89,12 @@ type Pending = {
 type Connection = {
   socket: WebSocket;
   pending: Map<number, Pending>;
+};
+
+// A request that arrived before any tab connected.
+type Waiter = {
+  connected: (connection: Connection) => void;
+  abort: (error: Error) => void;
 };
 
 const safeEqual = (a: string, b: string): boolean => {
@@ -137,16 +147,19 @@ export const startBridgeServer = async (options: {
   webRoot: string;
   dataDir: string;
   maxSnapshotBytes?: number;
+  connectWaitMs?: number;
 }): Promise<BridgeServer> => {
   const webRoot = path.resolve(options.webRoot);
   const dataDir = path.resolve(options.dataDir);
   const maxSnapshotBytes = options.maxSnapshotBytes ?? MAX_SNAPSHOT_BYTES;
+  const connectWaitMs = options.connectWaitMs ?? CONNECT_WAIT_MS;
   const token = randomUUID();
   await mkdir(dataDir, { recursive: true });
 
   let port = 0;
   let nextId = 1;
   let active: Connection | undefined;
+  const waiters = new Set<Waiter>();
 
   const failPending = (connection: Connection, error: Error): void => {
     const pending = [...connection.pending.values()];
@@ -196,6 +209,8 @@ export const startBridgeServer = async (options: {
       active.socket.close(CLOSE_REPLACED, 'replaced');
     }
     active = connection;
+    for (const waiter of waiters) waiter.connected(connection);
+    waiters.clear();
     socket.on('message', (data, isBinary) => {
       if (isBinary || !Buffer.isBuffer(data)) {
         console.error('bridge: ignored a binary frame from the page');
@@ -370,44 +385,73 @@ export const startBridgeServer = async (options: {
   if (address === null || typeof address === 'string') throw new Error('bridge: no TCP address');
   port = address.port;
 
+  // The page needs a moment to load after emulator_open, so a request waits for the first tab.
+  const waitForConnection = (): Promise<Connection> => {
+    if (active) return Promise.resolve(active);
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        waiters.delete(waiter);
+        reject(new BridgeDisconnectedError(NOT_CONNECTED));
+      }, connectWaitMs);
+      const waiter: Waiter = {
+        connected: (connection) => {
+          clearTimeout(timer);
+          resolve(connection);
+        },
+        abort: (error) => {
+          clearTimeout(timer);
+          reject(error);
+        },
+      };
+      waiters.add(waiter);
+    });
+  };
+
+  // The response timeout starts here, when the request is actually sent.
+  const send = (
+    connection: Connection,
+    method: BridgeRequest['method'],
+    params: object,
+    timeoutMs: number,
+  ): Promise<unknown> =>
+    new Promise((resolve, reject) => {
+      const id = nextId++;
+      const timer = setTimeout(() => {
+        connection.pending.delete(id);
+        reject(
+          new BridgeTimeoutError(`The emulator did not answer ${method} within ${timeoutMs} ms.`),
+        );
+      }, timeoutMs);
+      connection.pending.set(id, {
+        resolve: (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        reject: (error) => {
+          clearTimeout(timer);
+          reject(error);
+        },
+      });
+      connection.socket.send(JSON.stringify({ jsonrpc: '2.0', id, method, params }), (error) => {
+        if (!error) return;
+        connection.pending.delete(id);
+        clearTimeout(timer);
+        reject(new BridgeDisconnectedError(`Could not send ${method}: ${error.message}`));
+      });
+    });
+
   return {
     port,
     token,
     pageUrl: (program) => `http://${HOST}:${port}/?program=${program}&token=${token}`,
     isConnected: () => active !== undefined,
-    request: (method, params, timeoutMs = BRIDGE_TIMEOUT_MS) =>
-      new Promise((resolve, reject) => {
-        const connection = active;
-        if (!connection) {
-          reject(new BridgeDisconnectedError(NOT_CONNECTED));
-          return;
-        }
-        const id = nextId++;
-        const timer = setTimeout(() => {
-          connection.pending.delete(id);
-          reject(
-            new BridgeTimeoutError(`The emulator did not answer ${method} within ${timeoutMs} ms.`),
-          );
-        }, timeoutMs);
-        connection.pending.set(id, {
-          resolve: (value) => {
-            clearTimeout(timer);
-            resolve(value);
-          },
-          reject: (error) => {
-            clearTimeout(timer);
-            reject(error);
-          },
-        });
-        connection.socket.send(JSON.stringify({ jsonrpc: '2.0', id, method, params }), (error) => {
-          if (!error) return;
-          connection.pending.delete(id);
-          clearTimeout(timer);
-          reject(new BridgeDisconnectedError(`Could not send ${method}: ${error.message}`));
-        });
-      }),
+    request: async (method, params, timeoutMs = BRIDGE_TIMEOUT_MS) =>
+      send(await waitForConnection(), method, params, timeoutMs),
     close: async () => {
-      if (active) failPending(active, new BridgeDisconnectedError('The bridge server closed.'));
+      const closed = new BridgeDisconnectedError('The bridge server closed.');
+      for (const waiter of waiters) waiter.abort(closed);
+      waiters.clear();
+      if (active) failPending(active, closed);
       for (const client of wss.clients) client.terminate();
       await new Promise<void>((resolve) => {
         server.close(() => resolve());

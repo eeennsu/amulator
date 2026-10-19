@@ -50,7 +50,11 @@ const isBridgeError = (error: unknown): error is Error =>
   error instanceof BridgeDisconnectedError ||
   error instanceof BridgePageError;
 
-export const createAmulatorServer = (bridge: BridgeServer): McpServer => {
+export const createAmulatorServer = (
+  bridge: BridgeServer,
+  // Tests pass a stub so they can observe whether a browser would have been opened.
+  { openBrowser: open = openBrowser }: { openBrowser?: (url: string) => void } = {},
+): McpServer => {
   const server = new McpServer(SERVER_INFO);
 
   // Sends one bridge request and renders its validated result; bridge failures become error results.
@@ -80,10 +84,11 @@ export const createAmulatorServer = (bridge: BridgeServer): McpServer => {
     'emulator_open',
     {
       description:
-        'Start a new emulator session and return its page URL. The URL carries a private session ' +
-        'token; the page connects back to this server over a local WebSocket. By default the URL ' +
-        'is also opened in the default browser. Call this first: every other emulator tool fails ' +
-        'until the page has connected.',
+        "Return this session's emulator page URL and, when no tab is connected yet, open it in " +
+        'the default browser. The URL carries a private session token; the page connects back to ' +
+        'this server over a local WebSocket. If a tab is already connected, no new window is ' +
+        'opened and that tab keeps running its current program. Call this first: the other ' +
+        'emulator tools wait a few seconds for the page to connect, then fail.',
       inputSchema: z.object({
         program: z
           .enum(PROGRAMS)
@@ -97,7 +102,9 @@ export const createAmulatorServer = (bridge: BridgeServer): McpServer => {
     },
     ({ program, openBrowser: shouldOpen }) => {
       const url = bridge.pageUrl(program);
-      if (shouldOpen) openBrowser(url);
+      // Another window would replace the connected tab (the newest connection wins).
+      if (bridge.isConnected()) return text(`Already connected: ${url}`);
+      if (shouldOpen) open(url);
       return text(url);
     },
   );

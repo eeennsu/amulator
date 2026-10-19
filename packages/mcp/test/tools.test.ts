@@ -1,22 +1,25 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { Client } from '@modelcontextprotocol/client';
+import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
 
 import { parseBridgeRequest } from '@amulator/core/control/protocol';
 
-import { TOOL_NAMES } from '../src/tools';
+import { CONNECT_WAIT_MS, startBridgeServer, type BridgeServer } from '../src/bridgeServer';
+import { createAmulatorServer, TOOL_NAMES } from '../src/tools';
 import { frameText } from './frameText';
 
 const STARTUP_TIMEOUT_MS = 60_000;
+const CALL_MARGIN_MS = 5_000;
 const PACKAGE_DIR = path.resolve(import.meta.dirname, '..');
 
 let client: Client;
 let base: string;
 let page: WebSocket | undefined;
+let pageUrl = '';
 
 type ToolResult = Awaited<ReturnType<Client['callTool']>>;
 
@@ -87,11 +90,17 @@ describe('amulator MCP server', () => {
     expect(tools.map((tool) => tool.name).sort()).toEqual([...TOOL_NAMES].sort());
   });
 
-  it('tells the caller to open the emulator when no tab is connected', async () => {
-    const result = await call('emulator_tap', { x: 1, y: 1 });
-    expect(result.isError).toBe(true);
-    expect(textOf(result)).toContain('emulator_open');
-  });
+  // The request waits CONNECT_WAIT_MS for a tab before it gives up.
+  it(
+    'explains the missing tab when none connects in time',
+    async () => {
+      const result = await call('emulator_tap', { x: 1, y: 1 });
+      expect(result.isError).toBe(true);
+      expect(textOf(result)).toContain('emulator_open');
+      expect(textOf(result)).toContain('retry');
+    },
+    CONNECT_WAIT_MS + CALL_MARGIN_MS,
+  );
 
   it('rejects out-of-range coordinates through the input schema', async () => {
     const result = await call('emulator_tap', { x: 400, y: 1 });
@@ -105,6 +114,7 @@ describe('amulator MCP server', () => {
     expect(url.startsWith('http://127.0.0.1:')).toBe(true);
     expect(url).toContain('token=');
     expect(url).toContain('program=paint');
+    pageUrl = url;
     page = await connectPage(url, {
       'tap': { ok: true },
       'drag': { ok: true },
@@ -139,8 +149,7 @@ describe('amulator MCP server', () => {
 
   it('turns a malformed page result into an error result', async () => {
     page?.terminate();
-    const open = await call('emulator_open', { openBrowser: false });
-    page = await connectPage(textOf(open), { screenshot: { pngBase64: 7 } });
+    page = await connectPage(pageUrl, { screenshot: { pngBase64: 7 } });
     const result = await call('emulator_screenshot');
     expect(result.isError).toBe(true);
     expect(textOf(result)).toContain('Unexpected response');
@@ -148,10 +157,59 @@ describe('amulator MCP server', () => {
 
   it('turns a page error response into an error result', async () => {
     page?.terminate();
-    const open = await call('emulator_open', { openBrowser: false });
-    page = await connectPage(textOf(open), {}, { code: -32000, message: 'guest is not running' });
+    page = await connectPage(pageUrl, {}, { code: -32000, message: 'guest is not running' });
     const result = await call('emulator_tap', { x: 1, y: 1 });
     expect(result.isError).toBe(true);
     expect(textOf(result)).toContain('guest is not running');
+  });
+});
+
+// In-process, so the browser opener can be a stub that records its calls.
+describe('emulator_open browser handling', () => {
+  let dir: string;
+  let bridge: BridgeServer;
+  let inProcess: Client;
+  let opened: string[];
+  let fakePage: WebSocket | undefined;
+
+  const open = (args: Record<string, unknown> = {}): Promise<ToolResult> =>
+    inProcess.callTool({ name: 'emulator_open', arguments: args });
+
+  beforeEach(async () => {
+    dir = await mkdtemp(path.join(tmpdir(), 'amulator-open-'));
+    bridge = await startBridgeServer({ webRoot: dir, dataDir: path.join(dir, 'data') });
+    opened = [];
+    const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+    await createAmulatorServer(bridge, { openBrowser: (url) => opened.push(url) }).connect(
+      serverSide,
+    );
+    inProcess = new Client({ name: 'open-test', version: '0.0.0' });
+    await inProcess.connect(clientSide);
+  });
+
+  afterEach(async () => {
+    fakePage?.terminate();
+    fakePage = undefined;
+    await inProcess.close();
+    await bridge.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('opens the page url in the browser when no tab is connected', async () => {
+    const url = textOf(await open());
+    expect(url).toBe(bridge.pageUrl('paint'));
+    expect(opened).toEqual([url]);
+  });
+
+  it('does not open a browser when openBrowser is false', async () => {
+    await open({ openBrowser: false });
+    expect(opened).toEqual([]);
+  });
+
+  it('does not open another window when a tab is already connected', async () => {
+    fakePage = await connectPage(bridge.pageUrl('paint'), {});
+    const result = await open();
+    expect(opened).toEqual([]);
+    expect(textOf(result)).toBe(`Already connected: ${bridge.pageUrl('paint')}`);
   });
 });
