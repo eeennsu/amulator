@@ -35,6 +35,7 @@ try {
         `--ld-path=${lld}`,
         `-Wl,-T,${join(BAREMETAL_DIR, 'link.ld')}`,
         join(BAREMETAL_DIR, 'start.S'),
+        join(BAREMETAL_DIR, 'trap.S'),
         join(BAREMETAL_DIR, source),
         '-o',
         elf,
