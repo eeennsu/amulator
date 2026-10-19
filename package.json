@@ -1,0 +1,21 @@
+{
+  "name": "amulator",
+  "private": true,
+  "scripts": {
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.0 || ^10.0.1",
+    "@ianvs/prettier-plugin-sort-imports": "^4.7.1",
+    "eslint": "^9.39.0 || ^10.12.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.9",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.71.1"
+  }
+}

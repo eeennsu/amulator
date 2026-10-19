@@ -1,0 +1,7 @@
+**/*.md
+pnpm-lock.yaml
+third_party/
+plugin/server/
+plugin/web/
+guest/baremetal/out/
+packages/core/test/fixtures/

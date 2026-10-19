@@ -1,0 +1,17 @@
+{
+  "name": "@amulator/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p test/tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "vitest": "^5.0.5"
+  }
+}
