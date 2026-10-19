@@ -43,18 +43,8 @@ export const createMachine = ({
 }: MachineOptions): Machine => {
   const ram = new Uint8Array(ramSize);
   const rawClint = createClint(clock);
-  const rawUart = createUart16550(onUartTransmit);
-
-  // 입력이 오면 wfi를 한 번 깨운다. UART 인터럽트가 없어서 이 이벤트가 유일한 깨움 경로다.
-  // 래치라서 게스트가 wfi에 닿기 전에 온 입력도 놓치지 않는다.
-  let wakeEvent = false;
-  const uart: Uart16550 = {
-    ...rawUart,
-    receive: (bytes) => {
-      rawUart.receive(bytes);
-      if (bytes.length > 0) wakeEvent = true;
-    },
-  };
+  // UART 인터럽트가 없어서 입력 이벤트(uart.consumeWakeEvent)가 wfi의 유일한 입력 깨움 경로다.
+  const uart = createUart16550(onUartTransmit);
   // CLINT에 쓴 직후 mip를 맞춘다. 게스트가 mtimecmp를 올리는 순간 인터럽트가 내려가야 한다.
   const clint: Clint = {
     ...rawClint,
@@ -80,8 +70,7 @@ export const createMachine = ({
   const settleIdle = (): boolean => {
     if (!cpu.idle) return false;
     syncInterrupts();
-    if (wakeEvent || (cpu.readCsr(CSR.mip) & cpu.readCsr(CSR.mie)) !== 0) {
-      wakeEvent = false;
+    if (uart.consumeWakeEvent() || (cpu.readCsr(CSR.mip) & cpu.readCsr(CSR.mie)) !== 0) {
       cpu.idle = false;
       return false;
     }

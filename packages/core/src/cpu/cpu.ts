@@ -12,7 +12,7 @@ import {
 
 export { PRIVILEGE, type Privilege };
 
-const REGISTER_COUNT = 32;
+export const REGISTER_COUNT = 32;
 const INSTRUCTION_BYTES = 4;
 const SHIFT_MASK = 0x1f;
 const UPPER_20_MASK = 0xffff_f000;

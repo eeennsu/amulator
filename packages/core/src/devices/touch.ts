@@ -1,14 +1,35 @@
+import { z } from 'zod';
+
 import { BusFault, type AccessWidth, type Device } from '../bus';
 import { FB_HEIGHT, FB_WIDTH, TOUCH_BASE } from '../memoryMap';
+
+export const TOUCH_QUEUE_DEPTH = 64;
+
+const X_MAX = FB_WIDTH - 1;
+const Y_MAX = FB_HEIGHT - 1;
+
+export const touchStateSchema = z.object({
+  queue: z
+    .array(
+      z.object({
+        x: z.int().min(0).max(X_MAX),
+        y: z.int().min(0).max(Y_MAX),
+        down: z.boolean(),
+      }),
+    )
+    .max(TOUCH_QUEUE_DEPTH),
+});
+
+export type TouchState = z.infer<typeof touchStateSchema>;
 
 export type TouchSample = { x: number; y: number; down: boolean };
 
 export type TouchDevice = Device & {
   push: (event: TouchSample) => void;
   readonly queueLength: number;
+  saveState: () => TouchState;
+  loadState: (state: TouchState) => void;
 };
-
-export const TOUCH_QUEUE_DEPTH = 64;
 
 const TOUCH_SIZE = 0x14;
 const WORD_BYTES = 4;
@@ -63,6 +84,11 @@ export const createTouchDevice = (): TouchDevice => {
     push,
     get queueLength() {
       return queue.length;
+    },
+    saveState: () => ({ queue: queue.map((sample) => ({ ...sample })) }),
+    loadState: (state) => {
+      queue.length = 0;
+      for (const sample of state.queue) queue.push({ ...sample });
     },
   };
 };

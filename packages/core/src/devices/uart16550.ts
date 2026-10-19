@@ -1,7 +1,31 @@
+import { z } from 'zod';
+
 import { BusFault, type AccessWidth, type Device } from '../bus';
 import { UART_BASE } from '../memoryMap';
 
-export type Uart16550 = Device & { receive: (bytes: Uint8Array) => void };
+const BYTE_MAX = 0xff;
+const byteSchema = z.int().min(0).max(BYTE_MAX);
+
+export const uartStateSchema = z.object({
+  rx: z.array(byteSchema),
+  dll: byteSchema,
+  dlm: byteSchema,
+  ier: byteSchema,
+  lcr: byteSchema,
+  mcr: byteSchema,
+  scr: byteSchema,
+  wake: z.boolean(),
+});
+
+export type UartState = z.infer<typeof uartStateSchema>;
+
+export type Uart16550 = Device & {
+  receive: (bytes: Uint8Array) => void;
+  // 입력이 오면 wfi를 한 번 깨운다. 래치라서 게스트가 wfi에 닿기 전에 온 입력도 놓치지 않는다.
+  consumeWakeEvent: () => boolean;
+  saveState: () => UartState;
+  loadState: (state: UartState) => void;
+};
 
 const UART_SIZE = 8;
 
@@ -13,7 +37,8 @@ const IIR_NO_INTERRUPT = 0x01;
 
 // shortcut: 인터럽트를 만들지 않고 FIFO 깊이 제한도 없다, 게스트가 UART 인터럽트를 써야 할 때 MEIP 연결과 함께 더한다
 export const createUart16550 = (onTransmit: (byte: number) => void): Uart16550 => {
-  const rx: number[] = [];
+  let rx: number[] = [];
+  let wake = false;
   const latch = { dll: 0, dlm: 0, ier: 0, lcr: 0, mcr: 0, scr: 0 };
 
   const read = (offset: number, width: AccessWidth): number => {
@@ -74,6 +99,18 @@ export const createUart16550 = (onTransmit: (byte: number) => void): Uart16550 =
     write,
     receive: (bytes) => {
       for (const byte of bytes) rx.push(byte);
+      if (bytes.length > 0) wake = true;
+    },
+    consumeWakeEvent: () => {
+      const pending = wake;
+      wake = false;
+      return pending;
+    },
+    saveState: () => ({ rx: [...rx], ...latch, wake }),
+    loadState: ({ rx: queue, wake: pending, ...registers }) => {
+      rx = [...queue];
+      wake = pending;
+      Object.assign(latch, registers);
     },
   };
 };

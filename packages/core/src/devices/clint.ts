@@ -1,13 +1,27 @@
+import { z } from 'zod';
+
 import { BusFault, type AccessWidth, type Device } from '../bus';
 import { CLINT_BASE } from '../memoryMap';
 
 export type Clock = { nowMicros: () => number };
+
+// mtime은 저장 시점의 값이다. 복원하면 새 시계 위에서 이 값부터 이어 센다.
+export const clintStateSchema = z.object({
+  mtime: z.int().min(0),
+  mtimecmpLo: z.uint32(),
+  mtimecmpHi: z.uint32(),
+  msip: z.literal([0, 1]),
+});
+
+export type ClintState = z.infer<typeof clintStateSchema>;
 
 export type Clint = Device & {
   mtime: () => number;
   timerPending: () => boolean;
   softwarePending: () => boolean;
   mtimecmp: () => number;
+  saveState: () => ClintState;
+  loadState: (state: ClintState) => void;
 };
 
 const CLINT_SIZE = 0x1_0000;
@@ -24,8 +38,8 @@ const REG = {
 } as const;
 
 export const createClint = (clock: Clock): Clint => {
-  const epoch = Math.floor(clock.nowMicros());
-  let msip = 0;
+  let epoch = Math.floor(clock.nowMicros());
+  let msip: 0 | 1 = 0;
   // 64비트 값을 32비트 둘로 들고 있어야 RV32 게스트가 반쪽씩 쓰는 순서를 따를 수 있다.
   let cmpLo = UINT32_MAX;
   let cmpHi = UINT32_MAX;
@@ -56,7 +70,7 @@ export const createClint = (clock: Clock): Clint => {
     if (width !== WORD_BYTES) throw new BusFault(CLINT_BASE + offset, 'write');
     switch (offset) {
       case REG.msip:
-        msip = value & 1;
+        msip = value & 1 ? 1 : 0;
         break;
       case REG.mtimecmpLo:
         cmpLo = value >>> 0;
@@ -79,5 +93,12 @@ export const createClint = (clock: Clock): Clint => {
     mtimecmp,
     timerPending: () => mtime() >= mtimecmp(),
     softwarePending: () => msip === 1,
+    saveState: () => ({ mtime: mtime(), mtimecmpLo: cmpLo, mtimecmpHi: cmpHi, msip }),
+    loadState: (state) => {
+      epoch = Math.floor(clock.nowMicros()) - state.mtime;
+      cmpLo = state.mtimecmpLo;
+      cmpHi = state.mtimecmpHi;
+      msip = state.msip;
+    },
   };
 };
