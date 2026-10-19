@@ -4,6 +4,7 @@
 
 - 작성일과 확인일: 2026-10-19. 아래 모든 확인은 이 날짜에 이 PC(Windows 11 Pro 10.0.26200, AMD Ryzen 5 7500F, RAM 31.5 GB)에서 했다.
 - 근거 조사: [rea-windows.md](../research/rea-windows.md). 그 문서가 "미확인"으로 남긴 두 가지, 곧 이슈 #1701 재현 여부와 이 PC에서의 파이프라인 동작을 이 기록이 확인한다.
+- M1(Task 16)의 본체 분석 기록과 증거 문서 목록은 [7절](#7-m1-본체-분석-기록-task-16)에 있다.
 - 이 문서의 경로와 명령은 윈도우 PC 기준이다. 맥에서 같은 분석을 하려면 JDK 21과 Ghidra 12.1.x 경로를 맞춰 같은 환경변수를 지정하면 되지만, 맥에서는 시험하지 않았다(미확인).
 
 ## 1. 설치
@@ -107,7 +108,7 @@ qemu, https://android.googlesource.com/platform/external/qemu/+/refs/heads/emu-m
 
 막힌 점은 없다. 다음 태스크가 알아 둘 주의점은 다음과 같다.
 
-- **호출마다 Ghidra 세션을 새로 연다.** CLI 호출 하나가 별도 프로세스라 임포트와 자동 분석을 매번 다시 한다(작은 `qemu-img.exe`도 65~81초). 49 MiB급 `qemu-system-x86_64-headless.exe`는 분 단위가 아니라 수십 분을 각오한다(rea-windows.md 6.1절의 추정이고 실측은 아직 없다). 한 번 얻은 결과는 파일로 저장해 두고 그 파일을 읽는다. 같은 질의를 되풀이할 때만 `--snapshot`이 효과가 있다.
+- **호출마다 Ghidra 세션을 새로 연다.** CLI 호출 하나가 별도 프로세스라 임포트와 자동 분석을 매번 다시 한다(작은 `qemu-img.exe`도 65~81초). 49 MiB급 `qemu-system-x86_64-headless.exe`는 분 단위가 아니라 수십 분을 각오한다(rea-windows.md 6.1절의 추정이었고, 실측은 7절에 있다. 호출 하나가 약 65~67분이었다). 한 번 얻은 결과는 파일로 저장해 두고 그 파일을 읽는다. 같은 질의를 되풀이할 때만 `--snapshot`이 효과가 있다.
 - **출력이 크다.** `rea function`의 JSON이 840 KB였다(의사코드와 어셈블리 포함). MCP로 쓸 때는 Claude Code의 도구 출력 한도(25,000 토큰)에 걸릴 수 있으니 큰 함수는 CLI로 파일에 저장하고 필요한 필드만 읽는다. 의사코드 원문은 레포에 넣지 않는다.
 - **분석 중 임시 자원.** 이번 실행 뒤 남은 `java` 프로세스와 `%TEMP%`의 임시 디렉터리는 없었다. 호출이 비정상 종료되면 REA 문서대로 비공개 런타임 파일이 남을 수 있다.
 - **JDK 경로의 `+`.** 폴더 이름 `jdk-21.0.12.1+1`의 `+`는 doctor, CLI, MCP 등록 모두에서 문제가 없었다.
@@ -127,3 +128,51 @@ npx -y rea-agents@6.7.0 analyze '<대상 경로>' --provider ghidra --json > out
 ```
 
 Git Bash는 `export JAVA_HOME='C:\tools\jdk-21.0.12.1+1'`처럼 같은 변수를 `export`하고 같은 `npx` 명령을 쓴다. 명령 목록은 `npx -y rea-agents@6.7.0 --help`, 사용법은 [cli.md](https://github.com/morluto/rea/blob/rea-agents-6.7.0/docs/cli.md)(태그 `rea-agents-6.7.0`, 확인일 2026-10-19)에 있다.
+
+## 7. M1 본체 분석 기록 (Task 16)
+
+2026-10-19에 `qemu-system-x86_64-headless.exe`를 REA CLI의 `trace`로 열어 CPU·장치·입력 단계의 닻 문자열을 따라갔다. 결과 요약은 [02-cpu.md](02-cpu.md), [03-devices.md](03-devices.md), [05-input.md](05-input.md)에 있다. 화면(gfxstream)은 REA 대상이 아니라서 `04-display.md`는 만들지 않았다(4절). 이 절은 분석에 쓴 조건과 시간, 못 한 것을 적는다.
+
+### 7.1 대상과 설정
+
+| 항목 | 값 |
+|---|---|
+| 대상 | `C:\Users\xxx99\AppData\Local\Android\Sdk\emulator\qemu\windows-x86_64\qemu-system-x86_64-headless.exe`. NOTICE.csv의 qemu(GPL-2.0-only) 줄에 있다(4절). 제자리에서 열었다. REA가 분석 중 만든 임시 사본으로 분석한다 |
+| 크기, 해시 | 51,576,472 B, SHA-256 `d80d316cbb120d09fd589203b5117a8d95d00f11b55c254d9b09cc7bda884528`, 수정일 2026-01-12. 에뮬레이터 36.3.10(`source.properties`) |
+| 형식 | PE32+ x86-64. 이미지 베이스 `0x140000000`, `.text`는 `0x140001000`부터, `.rdata`는 `0x14227b000`부터(PE 헤더를 읽어 확인). 이 문서들의 주소는 모두 이 베이스 기준이다 |
+| 도구 | rea-agents 6.7.0, Ghidra 12.1.4, JDK 21.0.12.1, provider `ghidra`, 분석기는 기본값(`ghidra-default`) |
+| 설정 | `REA_GHIDRA_STARTUP_TIMEOUT_MS=7200000`(120분, 기본은 330초), `GHIDRA_HEADLESS_MAXMEM`은 5G(처음 셋)와 4G, 3G. REA가 띄운 Ghidra의 JVM 인자는 `-Xmx<값> -XX:ParallelGCThreads=2 -XX:CICompilerCount=2`였다 |
+
+### 7.2 실행 기록
+
+모든 호출은 Git Bash에서 `nohup`으로 따로 띄우고, 결과 JSON과 로그, PID 파일을 세션 임시 폴더에 나란히 두었다. 시간 상자는 16:25(첫 호출 시작)부터 120분이다.
+
+| 질의(`trace`) | 증거 문서 | 시작 | 끝 | 걸린 시간 | 힙 |
+|---|---|---|---|---|---|
+| `whpx_init_vcpu failed` | 02 | 16:25:32 | 17:32:46 | 67분 14초 | 5G |
+| `goldfish_tty` | 03 | 16:25:32 | 17:32:22 | 66분 50초 | 5G |
+| `virtio_input_multi_touch_pci_1` | 05 | 16:34:00 | 17:39:19 | 65분 19초 | 5G. 16:25에 시작한 첫 호출은 16:30에 중단 |
+| `Unexpected MTS pointer update` | 05 | 16:42:33 | 17:47:24 | 64분 51초 | 4G |
+| `WHPX: Failed to exec a virtual processor` | 02 | 16:54:12 | 17:57:42 | 63분 30초 | 4G |
+| `WHPX: Failed to parse MMIO access` | 없음 | 17:14:45 | 17:25 중단 | - | 3G |
+| `goldfish` | 없음 | 17:33:30 | 18:25 중단 | 51분 45초 경과 | 4G |
+
+- 호출마다 Ghidra 세션을 새로 열어 임포트와 자동 분석을 처음부터 한다. 끝난 다섯 호출이 모두 63~67분이었고, 질의 내용은 시간에 영향이 없었다. 결과 JSON은 7~16 KB였다. 기본 시작 제한(330초)으로는 첫 호출이 끝날 수 없는 시간이라 제한을 늘린 설정이 필수였다.
+- 서로 다른 질의를 동시에 최대 6개 돌렸다. 단독 실행 시간은 재지 않았다. 그래서 63~67분은 동시에 여러 개를 돌린 상태의 값이다.
+- 메모리: 이 PC는 RAM 31.5 GB이고, 시작할 때 가용 메모리가 14.5 GB였다. Ghidra 프로세스 하나가 시작 직후 약 4.5 GB(비공개 메모리)까지 올랐다가 분석 중에는 2.1~4 GB를 썼다. 5G 힙 셋을 동시에 시작했을 때 시스템 가용 메모리가 1.7 GB, 커밋 메모리가 한도 근처(41.6 GB / 42.5 GB, 이후 페이지 파일이 늘어 43 GB)까지 올라서 셋째 호출을 16:30에 중단하고 16:34에 다시 시작했다. 그 뒤 `java` 프로세스 5~6개를 동시에 돌린 동안 내가 본 표본에서 가용 메모리는 2.4 GB 아래로 내려가지 않았다. 힙을 4G로 낮춘 호출도 메모리 부족 오류 없이 끝났다.
+- 분석 단계는 `jstack`으로 표본을 떠서 봤다. 처음 두 호출(16:25 시작)에서 약 19분 뒤(ConstantPropagationAnalyzer), 약 29분 뒤(RttiAnalyzer), 약 39분 뒤(FidAnalyzer), 약 49~67분 뒤(StackVariableAnalyzer)에 각각 그 분석기가 돌고 있었다. 표본이라 경계는 대략이고, 가장 긴 구간은 마지막 스택 변수 분석이었다. RTTI 분석 때 Ghidra 로그에 C++ 타입 이름이 나왔다(예: `android::control::interceptor::InvocationRecord`). 이 이름들이 함수 이름 복원에 쓰이지는 않았고 결과의 함수 이름은 모두 `FUN_<주소>`였다.
+- 정리: 정상 종료한 호출은 REA가 임시 폴더(`%TEMP%\rea-ghidra-<id>`, 대상 사본 51 MB 포함)를 지웠다. PID로 중단한 세 호출의 폴더는 남았고(각 약 590~810 MB, 분석이 진행될수록 커진다) 이 작업에서 확인하고 지웠다. 중단은 그 호출의 `java.exe`와 부모 `node.exe` 프로세스를 Windows PID로 골라 끈 것이다.
+- 마지막 호출(`goldfish`)은 시간 상자가 끝난 18:25에 중단했다. 그때 Ghidra는 마지막 단계인 스택 변수 분석(StackVariableAnalyzer)에 들어가 있었다. 뒤의 호출일수록 동시에 도는 호출이 적어서 분석이 빨랐다(RTTI 분석까지 시작 후 약 25분, 앞선 호출은 약 29분). 단독 실행 시간은 재지 않았다.
+
+### 7.3 못 한 것
+
+- 콜 그래프(호출자·피호출자)는 얻지 못했다. `rea function`과 `xrefs`는 함수마다 새 세션(약 65분)이라 시간 상자 안에서는 `trace`로 닻 문자열을 따라가는 데까지만 갔다. 증거 문서는 "문자열 → 참조하는 함수(주소, 크기)"와 소스 대응까지다.
+- WHPX의 MMIO exit 처리(`whpx_handle_mmio`)와 goldfish 장치 전체, 비-헤드리스 `qemu-system-x86_64.exe`(Qt → SkinEvent 경로)는 시간 안에 끝나지 않거나 열지 않았다(05-input.md 0절).
+- 단독 실행 시간, 영구 Ghidra 프로젝트를 쓰는 방식은 이번에 재거나 시험하지 않았다.
+
+### 7.4 이어 갈 때
+
+- 닻을 넓게 잡는다. 질의 하나(`goldfish`, `WHPX:` 같은 부분 문자열)가 문자열 수십 개와 그것을 참조하는 함수를 한 번에 돌려주므로 호출 수 대비 정보가 가장 많다. 이번 `goldfish_tty`, `pci_1` 질의는 너무 좁았다.
+- 함수 본체와 콜 그래프가 필요하면 `rea function <대상> <주소>`를 주소마다 병렬로 돌린다. 호출 하나가 약 65분이고 힙은 4G면 되었다. 의사코드는 레포에 넣지 않는다.
+- 호출을 병렬로 4개 넘게 돌리기 전에 가용 메모리를 본다(위 메모리 항목).
+- 길게 돌리는 호출은 이번처럼 Git Bash에서 `nohup`으로 따로 띄우고, 결과와 PID를 파일로 남긴다. Git Bash의 `$!`는 MSYS PID라서, 중단할 때는 `Get-CimInstance Win32_Process`의 명령줄로 `java.exe`와 부모 프로세스를 찾아 Windows PID로 끈다.
