@@ -1,8 +1,12 @@
+import { dragEvents, tapEvents } from '@amulator/core/control/gestures';
+import { BRIDGE_ERROR_CODE, type BridgeRequest } from '@amulator/core/control/protocol';
+import { TOUCH_QUEUE_DEPTH, type TouchSample } from '@amulator/core/devices/touch';
 import type { Machine } from '@amulator/core/machine';
 import { FB_HEIGHT, FB_WIDTH } from '@amulator/core/memoryMap';
 
 import type { MainToWorker, WorkerToMain } from '../messages';
 import { PROGRAMS, type ProgramName } from '../programs';
+import { createHttpSnapshotStore } from './httpSnapshotStore';
 import { createSession, type Session } from './session';
 import { createIndexedDbSnapshotStore } from './snapshotStore';
 
@@ -17,7 +21,8 @@ const MICROS_PER_MS = 1_000;
 
 type Runtime = { session: Session; context: OffscreenCanvasRenderingContext2D; image: ImageData };
 
-const post = (message: WorkerToMain): void => self.postMessage(message);
+const post = (message: WorkerToMain, transfer: Transferable[] = []): void =>
+  self.postMessage(message, transfer);
 
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
@@ -27,6 +32,7 @@ let pendingOutput: number[] = [];
 let executed = 0;
 let statusSince = performance.now();
 let sliceQueued = false;
+let paused = false;
 let idleTimer: ReturnType<typeof setTimeout> | undefined;
 let tasks: Promise<void> = Promise.resolve();
 
@@ -90,7 +96,7 @@ const restartLoop = (): void => {
 };
 
 const runSlice = (): void => {
-  if (runtime === undefined) return;
+  if (runtime === undefined || paused) return;
   try {
     const { machine } = runtime.session;
     const deadline = performance.now() + SLICE_MS;
@@ -123,13 +129,18 @@ channel.port1.onmessage = () => {
   runSlice();
 };
 
-const start = async (program: ProgramName, canvas: OffscreenCanvas): Promise<void> => {
+const start = async (
+  program: ProgramName,
+  canvas: OffscreenCanvas,
+  token: string | undefined,
+): Promise<void> => {
   const context = canvas.getContext('2d');
   if (context === null) throw new Error('canvas 2d 컨텍스트를 만들 수 없다');
   const response = await fetch(PROGRAMS[program]);
   if (!response.ok) throw new Error(`${program} 프로그램을 받지 못했다: HTTP ${response.status}`);
   const session = createSession({
-    store: createIndexedDbSnapshotStore(),
+    // token이 있으면 MCP 모드라서 로컬 서버의 디스크에 저장한다.
+    store: token === undefined ? createIndexedDbSnapshotStore() : createHttpSnapshotStore(token),
     clock: { nowMicros: () => performance.now() * MICROS_PER_MS },
     onUartTransmit: (byte) => {
       pendingOutput.push(byte);
@@ -156,11 +167,91 @@ const reset = async (): Promise<void> => {
   restartLoop();
 };
 
+// shortcut: 게스트 시계는 벽시계라 멈춘 동안에도 흐른다, 멈춘 시간이 게스트에 보이면 안 될 때 clock을 멈춘다
+const pause = (): void => {
+  paused = true;
+  clearTimeout(idleTimer);
+  idleTimer = undefined;
+};
+
+const resume = (): void => {
+  paused = false;
+  executed = 0; // 멈춘 시간이 IPS에 섞이지 않게 한다
+  statusSince = performance.now();
+  restartLoop();
+};
+
+const OK = { ok: true } as const;
+
+// 큐가 차면 touch.push가 가장 오래된 것부터 버리므로, 누르기가 사라지느니 요청을 거절한다.
+const pushTouch = ({ session }: Runtime, samples: TouchSample[]): void => {
+  const { touch } = session.machine;
+  if (touch.queueLength + samples.length > TOUCH_QUEUE_DEPTH) {
+    throw new Error(
+      `터치 큐(${TOUCH_QUEUE_DEPTH})가 넘친다. 게스트가 비운 뒤 steps를 줄여 다시 보낸다`,
+    );
+  }
+  for (const sample of samples) touch.push(sample);
+  wake();
+};
+
+// 이미 그려져 있어도(dirty가 아니어도) 지금 프레임버퍼를 다시 그린 뒤 찍는다. 멈춘 동안에도 된다.
+const capture = async ({ session, context, image }: Runtime): Promise<ArrayBuffer> => {
+  session.machine.framebuffer.toRgba(image.data);
+  context.putImageData(image, 0, 0);
+  const blob = await context.canvas.convertToBlob({ type: 'image/png' });
+  return blob.arrayBuffer();
+};
+
+const perform = async (
+  current: Runtime,
+  request: Exclude<BridgeRequest, { method: 'screenshot' }>,
+): Promise<unknown> => {
+  switch (request.method) {
+    case 'tap':
+      pushTouch(current, tapEvents(request.params));
+      return OK;
+    case 'drag':
+      pushTouch(current, dragEvents(request.params.from, request.params.to, request.params.steps));
+      return OK;
+    case 'snapshot.save':
+      return current.session.save();
+    case 'snapshot.load': {
+      const restored = await current.session.restore();
+      current.session.machine.framebuffer.dirty = true;
+      return { restored };
+    }
+    case 'pause':
+      pause();
+      return OK;
+    case 'resume':
+      resume();
+      return OK;
+  }
+};
+
+// 예외는 버리지 않고 -32000 응답으로 돌려준다. 요청마다 응답이 하나여야 호출자가 기다리지 않는다.
+const serve = async (request: BridgeRequest): Promise<void> => {
+  try {
+    if (runtime === undefined) throw new Error('아직 부팅하지 않았다');
+    if (request.method === 'screenshot') {
+      const png = await capture(runtime);
+      post({ type: 'bridgeScreenshot', id: request.id, png }, [png]);
+      return;
+    }
+    const result = await perform(runtime, request);
+    post({ type: 'bridgeResponse', response: { jsonrpc: '2.0', id: request.id, result } });
+  } catch (error: unknown) {
+    const failure = { code: BRIDGE_ERROR_CODE.internal, message: messageOf(error) };
+    post({ type: 'bridgeResponse', response: { jsonrpc: '2.0', id: request.id, error: failure } });
+  }
+};
+
 self.onmessage = (event: MessageEvent<MainToWorker>) => {
   const message = event.data;
   switch (message.type) {
     case 'start':
-      enqueue(() => start(message.program, message.canvas));
+      enqueue(() => start(message.program, message.canvas, message.token));
       break;
     case 'uartInput':
       runtime?.session.machine.uart.receive(message.bytes);
@@ -176,5 +267,12 @@ self.onmessage = (event: MessageEvent<MainToWorker>) => {
     case 'reset':
       enqueue(reset);
       break;
+    case 'bridge': {
+      const { request } = message;
+      // tap·drag는 터치처럼 바로 넣고, 나머지는 start·save·reset과 겹치지 않게 줄 세운다.
+      if (request.method === 'tap' || request.method === 'drag') void serve(request);
+      else enqueue(() => serve(request));
+      break;
+    }
   }
 };

@@ -1,3 +1,4 @@
+import { connectBridge } from './bridge';
 import type { MainToWorker, WorkerToMain } from './messages';
 import { toFramebufferPoint } from './pointer';
 import { isProgramName, type ProgramName } from './programs';
@@ -18,10 +19,12 @@ const resetButton = byId('reset', HTMLButtonElement);
 const statusLine = byId('status', HTMLSpanElement);
 
 let note = '';
+let bridgeNote = '';
 let ips = 0;
 
 const renderStatus = (): void => {
-  statusLine.textContent = ips > 0 ? `${note} · ${(ips / MEGA).toFixed(1)} MIPS` : note;
+  const label = bridgeNote === '' ? note : `${note} · ${bridgeNote}`;
+  statusLine.textContent = ips > 0 ? `${label} · ${(ips / MEGA).toFixed(1)} MIPS` : label;
 };
 
 const setNote = (text: string): void => {
@@ -29,7 +32,12 @@ const setNote = (text: string): void => {
   renderStatus();
 };
 
-const run = (program: ProgramName): void => {
+const setBridgeNote = (text: string): void => {
+  bridgeNote = text;
+  renderStatus();
+};
+
+const run = (program: ProgramName, token: string | null): void => {
   const worker = new Worker(new URL('./worker/emulatorWorker.ts', import.meta.url), {
     type: 'module',
   });
@@ -39,6 +47,12 @@ const run = (program: ProgramName): void => {
   const terminal = createTerminal(byId('terminal', HTMLDivElement), (bytes) =>
     send({ type: 'uartInput', bytes }),
   );
+
+  // MCP 모드(URL에 token이 있을 때)에서만 로컬 서버와 잇는다.
+  const bridge =
+    token === null
+      ? undefined
+      : connectBridge(token, (request) => send({ type: 'bridge', request }), setBridgeNote);
 
   worker.onmessage = (event: MessageEvent<WorkerToMain>) => {
     const message = event.data;
@@ -59,6 +73,12 @@ const run = (program: ProgramName): void => {
       case 'status':
         ips = message.ips;
         renderStatus();
+        break;
+      case 'bridgeResponse':
+        bridge?.respond(message.response);
+        break;
+      case 'bridgeScreenshot':
+        bridge?.respondScreenshot(message.id, message.png);
         break;
     }
   };
@@ -99,9 +119,10 @@ const run = (program: ProgramName): void => {
   });
 
   const offscreen = canvas.transferControlToOffscreen();
-  send({ type: 'start', program, canvas: offscreen }, [offscreen]);
+  send({ type: 'start', program, canvas: offscreen, token: token ?? undefined }, [offscreen]);
 };
 
-const requested = new URLSearchParams(location.search).get('program') ?? DEFAULT_PROGRAM;
-if (isProgramName(requested)) run(requested);
+const query = new URLSearchParams(location.search);
+const requested = query.get('program') ?? DEFAULT_PROGRAM;
+if (isProgramName(requested)) run(requested, query.get('token'));
 else setNote(`알 수 없는 프로그램: ${requested}`);
