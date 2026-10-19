@@ -6,7 +6,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test",
+    "toolchain:check": "node scripts/checkToolchain.mjs",
+    "guest:build": "node scripts/buildBaremetal.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0 || ^10.0.1",
