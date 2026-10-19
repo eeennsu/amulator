@@ -9,8 +9,10 @@ const AUIPC = 0x17;
 const JAL = 0x6f;
 const JALR = 0x67;
 const MISC_MEM = 0x0f;
+const SYSTEM = 0x73;
 
 const ALT_FUNCT7 = 0x20; // sub, sra, srai
+const MULDIV_FUNCT7 = 0x01;
 const SRAI_BIT = ALT_FUNCT7 << 5; // srai는 즉시값 상위 7비트(imm[11:5])에 funct7을 둔다
 
 export const encodeR = (
@@ -86,6 +88,10 @@ const immOp =
   (funct3: number) =>
   (rd: number, rs1: number, value: number): number =>
     encodeI(OP_IMM, funct3, rd, rs1, value);
+const csrOp =
+  (funct3: number) =>
+  (rd: number, csr: number, source: number): number =>
+    encodeI(SYSTEM, funct3, rd, source, csr);
 const loadOp =
   (funct3: number) =>
   (rd: number, rs1: number, offset: number): number =>
@@ -109,6 +115,15 @@ export const srl = regOp(5);
 export const sra = regOp(5, ALT_FUNCT7);
 export const or = regOp(6);
 export const and = regOp(7);
+
+export const mul = regOp(0, MULDIV_FUNCT7);
+export const mulh = regOp(1, MULDIV_FUNCT7);
+export const mulhsu = regOp(2, MULDIV_FUNCT7);
+export const mulhu = regOp(3, MULDIV_FUNCT7);
+export const div = regOp(4, MULDIV_FUNCT7);
+export const divu = regOp(5, MULDIV_FUNCT7);
+export const rem = regOp(6, MULDIV_FUNCT7);
+export const remu = regOp(7, MULDIV_FUNCT7);
 
 export const addi = immOp(0);
 export const slti = immOp(2);
@@ -144,6 +159,20 @@ export const auipc = (rd: number, imm20: number): number => encodeU(AUIPC, rd, i
 export const jal = (rd: number, offset: number): number => encodeJ(JAL, rd, offset);
 export const jalr = (rd: number, rs1: number, offset: number): number =>
   encodeI(JALR, 0, rd, rs1, offset);
+
+// 인자 순서는 어셈블리와 같다: csrrw rd, csr, rs1. 즉시값 형(csrrwi 등)은 마지막 인자가 5비트 uimm이다.
+export const csrrw = csrOp(1);
+export const csrrs = csrOp(2);
+export const csrrc = csrOp(3);
+export const csrrwi = csrOp(5);
+export const csrrsi = csrOp(6);
+export const csrrci = csrOp(7);
+export const csrr = (rd: number, csr: number): number => csrrs(rd, csr, 0);
+
+export const ecall = (): number => encodeI(SYSTEM, 0, 0, 0, 0x000);
+export const ebreak = (): number => encodeI(SYSTEM, 0, 0, 0, 0x001);
+export const mret = (): number => encodeI(SYSTEM, 0, 0, 0, 0x302);
+export const wfi = (): number => encodeI(SYSTEM, 0, 0, 0, 0x105);
 
 // pred=succ=iorw인 일반 fence
 export const fence = (): number => encodeI(MISC_MEM, 0, 0, 0, 0x0ff);

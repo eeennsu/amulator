@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { createBus } from '../src/bus';
-import { Cpu } from '../src/cpu/cpu';
 import { RAM_BASE } from '../src/memoryMap';
+import { setup } from './helpers/cpu';
 import {
   add,
   addi,
@@ -15,6 +14,16 @@ import {
   blt,
   bltu,
   bne,
+  csrr,
+  csrrc,
+  csrrci,
+  csrrsi,
+  csrrw,
+  csrrwi,
+  div,
+  divu,
+  ebreak,
+  ecall,
   fence,
   fenceI,
   jal,
@@ -25,8 +34,15 @@ import {
   lhu,
   lui,
   lw,
+  mret,
+  mul,
+  mulh,
+  mulhsu,
+  mulhu,
   or,
   ori,
+  rem,
+  remu,
   sb,
   sh,
   sll,
@@ -41,23 +57,12 @@ import {
   srli,
   sub,
   sw,
+  wfi,
   xor,
   xori,
 } from './helpers/encode';
 
-const RAM_BYTES = 0x1000;
 const DATA = RAM_BASE + 0x100;
-
-// words를 pc부터 RAM에 쓰고 pc에서 시작하는 CPU를 만든다.
-const setup = (words: readonly number[], pc = RAM_BASE) => {
-  const bus = createBus(new Uint8Array(RAM_BYTES), []);
-  words.forEach((word, index) => {
-    bus.write(pc + index * 4, 4, word);
-  });
-  const cpu = new Cpu(bus);
-  cpu.pc = pc;
-  return cpu;
-};
 
 describe('encode helper', () => {
   // llvm-mc --triple=riscv32 -show-encoding으로 얻은 워드다. 음수 즉시값의 비트 배치를 고정한다.
@@ -75,6 +80,24 @@ describe('encode helper', () => {
     expect(jalr(1, 5, -1)).toBe(0xfff2_80e7);
     expect(fence()).toBe(0x0ff0_000f);
     expect(fenceI()).toBe(0x0000_100f);
+  });
+
+  it('CSR 명령어와 시스템 명령어, M 확장도 어셈블러가 만든 워드와 같다', () => {
+    expect(csrrw(1, 0x340, 2)).toBe(0x3401_10f3);
+    expect(csrr(1, 0xf11)).toBe(0xf110_20f3);
+    expect(csrrc(3, 0x300, 4)).toBe(0x3002_31f3);
+    expect(csrrwi(1, 0x340, 17)).toBe(0x3408_d0f3);
+    expect(csrrsi(2, 0xb02, 0)).toBe(0xb020_6173);
+    expect(csrrci(2, 0xb82, 31)).toBe(0xb82f_f173);
+    expect(csrr(5, 0x7c0)).toBe(0x7c00_22f3);
+    expect(ecall()).toBe(0x0000_0073);
+    expect(ebreak()).toBe(0x0010_0073);
+    expect(mret()).toBe(0x3020_0073);
+    expect(wfi()).toBe(0x1050_0073);
+    expect([mul, mulh, mulhsu, mulhu, div, divu, rem, remu].map((op) => op(3, 1, 2))).toEqual([
+      0x0220_81b3, 0x0220_91b3, 0x0220_a1b3, 0x0220_b1b3, 0x0220_c1b3, 0x0220_d1b3, 0x0220_e1b3,
+      0x0220_f1b3,
+    ]);
   });
 });
 
@@ -262,8 +285,8 @@ describe('RV32I 분기와 점프', () => {
     expect(cpu.pc).toBe(RAM_BASE + 0x10);
   });
 
-  // 목표 주소를 가져오는 것은 다음 step이라 RAM 밖이어도 된다.
-  it.each([0x7fe, 0x800, -0x800, 4094, -4096])(
+  // 목표 주소를 가져오는 것은 다음 step이라 RAM 밖이어도 된다. C 확장이 없어 4바이트 배수만 쓴다.
+  it.each([0x7fc, 0x800, -0x800, 4092, -4096])(
     'beq는 offset %i의 모든 비트를 해독한다',
     (offset) => {
       const cpu = setup([beq(1, 2, offset)]);
@@ -272,7 +295,7 @@ describe('RV32I 분기와 점프', () => {
     },
   );
 
-  it.each([0x7fe, 0x800, 0x1000, 0xff000, 1_048_574, -1_048_576])(
+  it.each([0x7fc, 0x800, 0x1000, 0xff000, 1_048_572, -1_048_576])(
     'jal은 offset %i의 모든 비트를 해독한다',
     (offset) => {
       const cpu = setup([jal(1, offset)]);
