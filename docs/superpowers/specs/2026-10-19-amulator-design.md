@@ -88,7 +88,11 @@
 - **라이선스:**
   - 공개하는 게스트 이미지와 미리 찍은 스냅샷(GPL 바이너리가 든 RAM 이미지)에는 Buildroot `make legal-info` 결과를 함께 공개한다.
   - MIT 코드를 참고해 옮긴 파일에는 원 저작권 표시를 남긴다. r2는 LICENSE 파일이 없어 라이선스를 확인할 수 없으므로 코드를 가져오지 않는다.
-  - 안드로이드 에뮬레이터 분석 결과를 게시하기 전에 Android SDK 라이선스 3.4·3.5와 REA DISCLAIMER를 다시 확인한다.
+  - **REA 분석 대상은 GPL 바이너리로 한정한다.**
+    - Android SDK 라이선스 3.4는 SDK의 복사(백업 제외), 디컴파일, 리버스 엔지니어링이라는 행위 자체를 막는다. 게시만 막는 것이 아니다. 다만 오픈소스 라이선스가 적용되는 구성요소는 3.5에 따라 그 라이선스가 규율한다.
+    - 그래서 REA로는 로컬 `NOTICE.csv`가 qemu(GPL-2.0-only) 대상으로 적은 바이너리만 연다. `qemu-system-x86_64.exe`, `qemu-system-x86_64-headless.exe`, `qemu-img.exe`가 해당한다.
+    - 라이선스 귀속을 판단하지 못한 `emulator.exe`와 `libandroid-emu-*.dll`은 REA로 열지 않는다. 런처 부분은 AOSP 소스(`main-emulator.cpp` 등)로 대신한다.
+    - 이 판단은 법률 자문이 아니다. 분석 결과를 게시하기 전에는 REA DISCLAIMER를 다시 확인한다.
 - **문서:** 모든 문서는 한국어 '-다'체로 쓴다. (사용자 환경)
 
 ## 4. 구조 (설계자 판단)
@@ -107,7 +111,10 @@ Claude Code ⇄(stdio, MCP) MCP 서버 (Node, 세션마다 하나)
 ```
 
 - **MCP 서버와 페이지:** MCP 서버는 Claude Code 세션마다 하나씩 뜬다. 각 서버는 127.0.0.1의 빈 포트에 자기 페이지와 브리지를 띄우고, 그 URL을 도구 결과로 돌려준다. 같은 폴더에서 세션 여러 개를 돌려도 포트가 겹치지 않고, 세션마다 에뮬레이터 탭이 하나씩 생긴다.
-- **브리지 보안:** 브리지는 실행마다 새로 만드는 토큰과 Origin이 맞는 연결만 받는다. 페이지가 브리지와 같은 origin의 localhost에서 열리므로, 공개 사이트에서 로컬로 접속할 때 걸리는 브라우저 로컬 네트워크 접근 제한을 피할 수 있다.
+- **브리지 보안:** 브리지는 실행마다 새로 만드는 토큰과 Origin(`http://127.0.0.1:<port>`)이 맞는 연결만 받는다. 페이지는 브리지와 같은 origin인 127.0.0.1에서 열리고, 공개 사이트는 로컬 브리지에 접속하지 않는다.
+- **MCP 모드의 스냅샷 저장:** 같은 로컬 서버가 스냅샷을 디스크에 저장한다. 실행 인자 `--data-dir`로 위치를 받고, 플러그인에서는 `${CLAUDE_PLUGIN_DATA}/snapshots`를 넘긴다.
+  - 이유: IndexedDB는 origin별로 나뉘는데 origin에는 포트가 들어간다. 세션마다 포트가 바뀌면 이전 세션의 스냅샷이 보이지 않고, 쓰이지 않는 저장소만 쌓인다.
+  - 디스크의 스냅샷 파일은 공개 사이트의 시작 스냅샷을 만드는 원본으로도 쓴다.
 - **CPU 루프:** worker 안에서 정해진 명령 수만큼 실행한 뒤 이벤트 루프에 양보한다. 양보하는 사이에 tap, screenshot, pause, snapshot 메시지를 처리한다. SharedArrayBuffer(COOP/COEP 헤더 필요)에는 기대지 않는다. 그래서 "게스트가 멈춰도 호스트 단독 명령은 동작한다"는 성질이 이 구간 실행에 달려 있다.
 - **화면과 스크린샷:** 화면은 `transferControlToOffscreen()`으로 넘긴 OffscreenCanvas에 worker가 직접 그린다. core는 프레임버퍼를 RGBA로 내보내고, 스크린샷 PNG 인코딩은 호스트 쪽이 한다. worker에서는 `OffscreenCanvas.convertToBlob`을 쓸 수 있다(MDN, 확인 2026-10-19, https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas/convertToBlob).
 - **제어 명령:** 안드로이드의 콘솔과 adb 구조를 따라 두 갈래로 나눈다.
@@ -123,7 +130,7 @@ Claude Code ⇄(stdio, MCP) MCP 서버 (Node, 세션마다 하나)
 | `packages/core` | CPU, 버스, 장치, 스냅샷 직렬화. DOM에 의존하지 않아 Node에서도 돈다. riscv-tests 하네스도 여기서 돌린다 |
 | `apps/web` | Vite 페이지. worker 호스트, xterm.js, 포인터 입력, WebSocket 클라이언트 |
 | `packages/mcp` | MCP 서버(stdio). 로컬 HTTP·WebSocket 브리지를 포함하고, `apps/web` 빌드 결과를 서빙한다 |
-| `guest/baremetal` | 단계 1~6의 bare-metal 프로그램: hello, 시계, 그림판, 게스트 응답 루틴 |
+| `guest/baremetal` | 단계 1~5의 bare-metal 프로그램: hello, 시계, 그림판 |
 | `guest/buildroot` | br2-external 트리: 커널 설정, DTS, 게스트 에이전트, LVGL 앱, Docker 빌드 스크립트 |
 | `plugin` | Claude Code 플러그인: MCP 등록과 사용 스킬 |
 | `docs/guides` | 에이전트가 쓰는 마일스톤별 읽기 가이드 |
@@ -144,9 +151,11 @@ Claude Code ⇄(stdio, MCP) MCP 서버 (Node, 세션마다 하나)
 - **스냅샷:**
   - 담는 것: CPU, RAM, 프레임버퍼 메모리(RAM 밖에 두면 별도 버퍼), 장치 상태
   - 포맷: v86 방식(헤더 + JSON info + 정렬된 바이너리 버퍼)을 따르고, `CompressionStream`(gzip)으로 압축한다
-  - 메타: 포맷 버전, 에뮬레이터 버전, 게스트 이미지 해시(커널·DTB 또는 bare-metal 바이너리). 맞지 않는 스냅샷은 거부한다
-  - 저장 시점: 명시적인 save 명령으로만 저장한다. 페이지를 닫을 때 저장하지 않는다. 비동기 압축과 IndexedDB 쓰기가 끝까지 완료된다는 보장이 없어서다
-  - 저장 위치: 사용자 스냅샷은 IndexedDB에 저장한다. 공개 사이트의 시작 스냅샷은 정적 URL에서 읽는다
+  - 메타: 포맷 버전, 장치 구성(RAM 크기, 장치 목록), 게스트 이미지 해시(커널·DTB 또는 bare-metal 바이너리), 에뮬레이터 버전
+  - 거부 기준: 포맷 버전, 장치 구성, 이미지 해시 중 하나라도 맞지 않으면 거부한다. 에뮬레이터 버전은 기록만 한다. 코드를 고칠 때마다 저장해 둔 스냅샷과 공개 시작 스냅샷이 모두 무효가 되지 않게 하려는 것이다. 대신 저장 상태의 구성이나 의미가 바뀌면 반드시 포맷 버전을 올린다
+  - 저장 시점: 명시적인 save 명령으로만 저장한다. 페이지를 닫을 때 저장하지 않는다. 비동기 압축과 저장소 쓰기가 끝까지 완료된다는 보장이 없어서다
+  - 저장 위치: MCP 모드에서는 로컬 서버의 디스크(4.1)에 저장하고, 단독 실행(개발 서버, 공개 사이트)에서는 IndexedDB에 저장한다. 공개 사이트의 시작 스냅샷은 디스크에 저장된 파일을 정적 파일로 배포해 정적 URL에서 읽는다
+  - 크기: 게스트 RAM은 64 MiB로 고정한다. 시작 스냅샷의 실제 크기는 M3a에서 잰다
   - 복원: CPU 루프를 명령 경계에서 멈춘 뒤 저장하고, 복원할 때 타이머 오프셋을 다시 잡는다. xterm 버퍼는 호스트 메타로 함께 저장하거나, 복원 뒤 줄바꿈을 보내 프롬프트를 다시 띄운다
 
 ## 5. 마일스톤
@@ -159,15 +168,20 @@ Claude Code ⇄(stdio, MCP) MCP 서버 (Node, 세션마다 하나)
 
 | 마일스톤 | 구현 (로드맵 단계) | 끝났을 때 보이는 것 | 학습 노트 |
 |---|---|---|---|
-| M0 준비 | 모노레포 스캐폴드. 윈도우 clang으로 rv32 bare-metal hello 링크 시험(실패하면 Docker의 Buildroot 툴체인 준비). JDK 21과 Ghidra 12.1.x 설치. 셸에서 `JAVA_HOME`·`GHIDRA_INSTALL_DIR`을 지정하고 `npx -y rea-agents@6.7.0 doctor --provider ghidra --json`으로 #1701 확인. REA를 이 프로젝트 local scope로 등록(`claude mcp add --scope local --env ...`로 JDK 21 경로 지정) | REA로 `emulator.exe`를 열어 런처가 qemu 바이너리를 고르는 흐름을 확인한다 | 1 실행과 부팅(런처 부분) |
-| M1 미니 OS + AI 조작 | 1~6: RV32I + UART → riscv-tests → M·Zicsr·트랩·CLINT → 프레임버퍼 → 래치 터치 레지스터와 페이지 입력 → 호스트 명령과 스냅샷 v1. 이어서 MCP 서버(호스트 단독 도구), 로컬 브리지, 플러그인 골격 | bare-metal 그림판. drag로 선을 그리고, snapshot save 뒤 새로고침하면 그림이 그대로 살아난다. Claude가 MCP로 그림을 그리고 스크린샷을 찍는다 | 2 CPU, 3 장치, 4 화면, 5 입력 |
-| M2 nommu 리눅스 | 7~8: A 확장, mini-rv32ima 이미지 부팅(로컬 전용), 셸 스냅샷 | xterm에 리눅스 셸이 뜨고, 새로고침 뒤 셸에서 이어 간다. 부팅 시간을 잰다 | 7 스냅샷 |
-| M3 MMU 리눅스 | 9~12: S/U, Sv32, TLB, SBI(BASE·TIME·SRST), PLIC, Buildroot 이미지(6.18 LTS), simplefb·fbcon, virtio-mmio·virtio-input, LVGL 앱. MCP의 tap이 virtio-input으로 들어간다 | canvas에 펭귄 로고와 LVGL 터치 UI가 나오고, Claude가 탭으로 조작한다 | 1 부팅(커널 진입), 3 장치(virtio), 5 입력(virtio-input) |
+| M0 준비 | 모노레포 스캐폴드. 윈도우 clang으로 rv32 bare-metal hello 링크 시험(실패하면 Docker의 Buildroot 툴체인 준비). JDK 21과 Ghidra 12.1.x 설치. 셸에서 `JAVA_HOME`·`GHIDRA_INSTALL_DIR`을 지정하고 `npx -y rea-agents@6.7.0 doctor --provider ghidra --json`으로 #1701 확인. REA를 이 프로젝트 local scope로 등록(`claude mcp add --scope local --env ...`로 JDK 21 경로 지정) | REA가 동작하면 `qemu-img.exe`(GPL 대상 중 가장 작다)로 분석 파이프라인을 확인한 증거가 남는다. REA가 막히면 doctor 결과와 막힌 지점을 기록한 문서가 남는다. 런처 흐름은 어느 경우든 소스로 정리한다 | 1 실행과 부팅(런처 부분) |
+| M1 미니 OS + AI 조작 | 1~6: RV32I + UART → riscv-tests → M·Zicsr·트랩·CLINT → 프레임버퍼 → 래치 터치 레지스터와 페이지 입력 → 호스트 명령과 스냅샷 v1. 이어서 MCP 서버(호스트 단독 도구, 디스크 스냅샷 저장), 로컬 브리지, 플러그인 골격 | bare-metal 그림판. drag로 선을 그리고, snapshot save 뒤 새로고침하면 그림이 그대로 살아난다. Claude가 MCP로 그림을 그리고 스크린샷을 찍는다 | 2 CPU, 3 장치, 4 화면, 5 입력 |
+| M2 nommu 리눅스 | 7~8: A 확장, mini-rv32ima 이미지 부팅(로컬 전용), 셸 스냅샷. 이 이미지는 GPL-3.0으로 표시되어 있고 서면 제안이 없으므로 레포에 커밋하지 않는다. 스크립트로 받아 gitignore된 폴더에 둔다. Buildroot 첫 빌드를 이 마일스톤과 병행해 미리 돌린다 | xterm에 리눅스 셸이 뜨고, 새로고침 뒤 셸에서 이어 간다. 부팅 시간과 MIPS를 기록한다. Docker 빌드 환경과 Buildroot 빌드 시간을 확인한다 | 7 스냅샷 |
+| M3a MMU 셸 | 9: S/U, Sv32, TLB, SBI(BASE·TIME·SRST), PLIC, Buildroot 이미지(6.18 LTS, initramfs) | MMU 리눅스가 xterm 셸까지 부팅한다. 부팅 시간과 시작 스냅샷 크기를 다시 잰다 | 1 부팅(커널 진입), 2 CPU(MMU·특권 모드) |
+| M3b 화면·입력 | 10~12: simplefb·fbcon, virtio-mmio·virtio-input, LVGL 앱. MCP의 tap이 virtio-input으로 들어간다 | canvas에 펭귄 로고와 LVGL 터치 UI가 나오고, Claude가 탭으로 조작한다. 탭에서 화면에 반영되기까지 걸리는 시간을 잰다 | 3 장치(virtio), 4 화면(fbcon), 5 입력(virtio-input) |
 | M4 게스트 통신 | 13: virtio-console 멀티포트, 게스트 에이전트, MCP의 shell·push·pull 도구, 플러그인 완성 | 1장의 데모 장면 전체 | 6 호스트↔게스트 통신 |
 | M5 공개 | README(한국어, 영문판을 더할지는 빌더 재량), 데모 영상, 공개용 시작 스냅샷, legal-info 묶음(스냅샷 포함), 정적 사이트 배포, 학습 노트 목차 | 공개 레포와 데모 링크 | 전체 목차 |
 | 선택 | 14: virtio-gpu 2D, 실제 OpenSBI, 핫 루프 WASM JIT | 성능과 정확도 개선 | - |
 
-**M2 관문:** 이 PC의 Chrome에서 리눅스 셸까지 60초를 넘기면, M3에 들어가기 전에 인터프리터 최적화나 JIT를 앞당길지 다시 정한다. 60초 이내면 계획대로 간다.
+측정 관문은 셋이다. 기준 숫자는 모두 설계자 판단이다.
+
+- **M2 관문:** 이 PC의 Chrome에서 리눅스 셸까지 60초를 넘기면, M3a에 들어가기 전에 인터프리터 최적화나 JIT를 앞당길지 다시 정한다. 60초 이내면 계획대로 간다. MIPS도 함께 기록한다. nommu·uClibc 이미지라 MMU 리눅스의 부팅 시간을 그대로 예측하지는 못하기 때문이다.
+- **M3a 재측정:** MMU 리눅스의 부팅 시간을 다시 잰다. 공개 사이트는 시작 스냅샷으로 부팅을 피하므로, 이 숫자는 데모 영상의 배속 편집 정도를 정하는 데 쓴다.
+- **M3b 반응 관문:** 공개 사이트 방문자가 겪는 것은 부팅 시간이 아니라 탭 반응이다. 탭 이벤트를 넣은 시점부터 바뀐 화면이 canvas에 그려질 때까지 200 ms를 넘기면 M4 전에 개선한다.
 
 ## 6. 학습 트랙
 
@@ -188,19 +202,21 @@ Claude Code ⇄(stdio, MCP) MCP 서버 (Node, 세션마다 하나)
 
 | 단계 | 진짜 안드로이드 에뮬레이터 | REA·소스 출발점 | 이 에뮬레이터 |
 |---|---|---|---|
-| 1 부팅 | `emulator.exe`가 `qemu-system-x86_64` 본체를 띄우고, `-kernel`·`-initrd`·`-dtb`로 직접 부팅한다 | `emulator.exe`의 `qemu-system-%s` 실행 서식 문자열 | 커널·DTB를 fetch로 받아 RAM에 올리고 a0/a1로 진입 |
-| 2 CPU | WHPX로 게스트를 직접 실행하고, VM exit만 소프트웨어가 처리한다. 바이너리에 TCG 코드(`tcg_accel_class_init`)는 있지만 x86 대상이라 실행 경로에 거의 나오지 않는다 | `whpx_init_vcpu failed`. 해석기 설계는 AOSP `external/qemu`의 `tcg/`, `target/riscv/` 소스 | TS 인터프리터. VM exit 처리는 MMIO 디스패처에 대응 |
+| 1 부팅 | `emulator.exe`가 `qemu-system-x86_64` 본체를 띄우고, `-kernel`·`-initrd`·`-dtb`로 직접 부팅한다 | 런처는 소스 `main-emulator.cpp`(REA 대상이 아니다, 3장). 본체의 부팅 인자 처리는 헤드리스 EXE | 커널·DTB를 fetch로 받아 RAM에 올리고 a0/a1로 진입 |
+| 2 CPU | WHPX로 게스트를 직접 실행하고, VM exit만 소프트웨어가 처리한다. x86·x86_64 게스트는 하드웨어 가속이 필수라 TCG 경로를 쓰지 않는다. TCG 코드(`tcg_accel_class_init`)는 바이너리에 들어 있다 | `whpx_init_vcpu failed`. 해석기 설계는 AOSP `external/qemu`의 `tcg/`, `target/riscv/` 소스 | TS 인터프리터. VM exit 처리는 MMIO 디스패처에 대응 |
 | 3 장치 | i440FX pc 보드에 goldfish MMIO 장치와 virtio PCI 장치를 얹는다 | `goldfish_tty` | 주소 범위 테이블, UART·CLINT·PLIC·virtio-mmio |
-| 4 화면 | 게스트 GLES/Vulkan을 goldfish pipe로 보내 gfxstream(`libgfxstream_backend.dll`)이 호스트 GPU로 그린다 | 같은 문서 5절 (d) | simplefb 메모리 → canvas. API 포워딩은 하지 않는다 |
-| 5 입력 | Qt 이벤트 → SkinEvent → EV_ABS/EV_KEY → virtio-input | 같은 문서 6절 (d) | 포인터 → 래치 레지스터 / virtio-input |
+| 4 화면 | 게스트 GLES/Vulkan을 goldfish pipe로 보내 gfxstream(`libgfxstream_backend.dll`)이 호스트 GPU로 그린다 | 같은 문서 5절 (d). `libgfxstream_backend.dll`은 qemu 대상 목록에 있는지 확인하지 않았으므로 REA로 열지 않고 소스로 본다 | simplefb 메모리 → canvas. API 포워딩은 하지 않는다 |
+| 5 입력 | Qt 이벤트 → SkinEvent → EV_ABS/EV_KEY → virtio-input | virtio-input 장치 쪽은 헤드리스 EXE(같은 문서 6절 (d))에서 본다. Qt → SkinEvent 경로는 헤드리스 EXE에 없으므로(Qt6 문자열 0건) 비-헤드리스 `qemu-system-x86_64.exe`(58 MiB)를 따로 열거나 소스로만 다룬다 | 포인터 → 래치 레지스터 / virtio-input |
 | 6 통신 | 콘솔 5554, adb, gRPC, goldfish pipe, virtio-vsock | 같은 문서 7절 (d) | 호스트 단독 명령 + virtio-console |
 | 7 스냅샷 | 퀵부트 = QEMU savevm + 파일 기반 RAM(`ram.img`) + GPU 텍스처 + `snapshot.pb` 호환 검사 | 같은 문서 8절 (d) | IndexedDB / 정적 URL + 메타 호환 검사 |
 
 REA를 쓰는 방식은 다음과 같다.
 
-- 본체는 `qemu\windows-x86_64\qemu-system-x86_64-headless.exe`를 연다.
+- 열 수 있는 바이너리는 3장의 GPL 대상 셋뿐이다. 본체는 `qemu\windows-x86_64\qemu-system-x86_64-headless.exe`를 연다.
 - 큰 바이너리는 MCP보다 CLI와 증거 JSON으로 다루고, 수십 분 걸리는 것을 전제로 한다.
-- 공개 소스는 2025-03(35.6.3)에서 멈췄고, 로컬 바이너리는 36.3.10이다. 소스와 바이너리가 어긋나는 곳은 노트에 적는다.
+- 소스를 읽을 때의 기준 브랜치는 2026-09-15까지 갱신된 `emu-main-dev`다. `emu-master-dev`는 2025-03-27(35.6.3)에서 멈췄다.
+- android-emulator-internals.md에 적힌 줄 번호는 `emu-master-dev`의 커밋 `ae9d18d` 기준이다.
+- 로컬 바이너리(36.3.10)가 어느 브랜치·커밋에서 빌드됐는지는 미확인이다. 소스와 바이너리가 어긋나는 곳은 노트에 적는다.
 
 ## 7. 성공 기준
 
@@ -215,9 +231,9 @@ REA를 쓰는 방식은 다음과 같다.
 - TS 내부 구조: 디코더 방식, 모듈 경계, 클래스와 함수 중 무엇을 쓸지
 - CPU 루프 한 구간의 명령 수
 - 테스트 프레임워크, UI 디자인과 페이지 구성
-- 단계 4~6에서 더하는 장치(프레임버퍼, 터치 레지스터, 두 번째 UART)의 주소, 9단계 이후의 자체 메모리 맵과 DTS 세부
+- 단계 4~5에서 더하는 장치(프레임버퍼, 터치 레지스터)의 주소, 9단계 이후의 자체 메모리 맵과 DTS 세부
 - 제어 프로토콜의 메시지 세부와 MCP 도구 이름
-- 정적 사이트 호스팅 선택. COOP/COEP 헤더를 쓰지 않는다는 전제를 지킨다
+- 정적 사이트 호스팅 선택. 두 조건을 지킨다. COOP/COEP 헤더를 쓰지 않을 것, 그리고 시작 스냅샷 파일이 호스트의 파일 크기 한도 안에 들 것(한도는 M5에서 조회한다)
 - core를 Node에서 헤드리스로 돌려 MCP가 브라우저 없이 쓰는 모드를 둘지. 두면 PNG 인코딩을 Node 쪽에서 따로 처리해야 한다
 
 ## 9. 위험과 대응
@@ -229,9 +245,11 @@ REA를 쓰는 방식은 다음과 같다.
 | Buildroot 빌드가 Docker에 의존한다 | Docker named volume에서 빌드하고 결과물만 윈도우로 복사한다. 빌드 시간은 첫 빌드에서 잰다 |
 | RV32와 nommu가 업스트림에서 줄어들고 있다 | 커널은 6.18 LTS로 고정한다. nommu는 중간 마일스톤에만 쓴다 |
 | 세션 여러 개가 동시에 MCP 서버를 띄운다 | 세션마다 빈 포트와 자기 페이지를 쓴다(4.1) |
-| 공개 사이트에서 로컬로 접속할 때 브라우저 제한에 걸린다 | 공개 사이트는 로컬에 접속하지 않는다. MCP 조작은 로컬 페이지에서만 한다(4.1) |
-| 소스와 바이너리의 버전 차이(35.6.3 vs 36.3.10) | 어긋나는 곳을 노트에 적는다 |
-| 라이선스 | 공개 이미지와 스냅샷은 직접 빌드하고 legal-info를 첨부한다. 분석 결과는 결론과 증거 요약만 게시한다 |
+| 포트가 바뀌면 IndexedDB의 스냅샷이 안 보이고 저장소가 쌓인다 | MCP 모드의 스냅샷은 로컬 서버가 디스크에 저장한다(4.1) |
+| 공개 사이트와 로컬 브리지가 섞인다 | 공개 사이트는 로컬 브리지에 접속하지 않는다. MCP 조작은 플러그인이 띄운 로컬 페이지에서만 한다(4.1) |
+| 탭이 가려지거나 백그라운드일 때 worker 루프가 스로틀링된다(미확인) | M1 끝에서 탭을 가린 채로 도구를 호출해 확인한다. 문제가 있으면 그때 대응을 정한다 |
+| 소스와 바이너리의 버전 차이 | `emu-main-dev`를 기준으로 읽고, 어긋나는 곳을 노트에 적는다(6장) |
+| 라이선스 | REA는 GPL 바이너리만 연다(3장). 공개 이미지와 스냅샷은 직접 빌드하고 legal-info를 첨부한다. M2의 mini-rv32ima 이미지는 레포에 넣지 않는다. 분석 결과는 결론과 증거 요약만 게시한다 |
 
 ## 10. 남은 미확인 사항
 
@@ -241,3 +259,6 @@ REA를 쓰는 방식은 다음과 같다.
 - 이 PC에서의 Buildroot 빌드 시간
 - 윈도우 clang으로 rv32 bare-metal 링크까지 되는지 (M0에서 확인한다)
 - REA로 49 MiB 바이너리를 분석하는 시간과 #1701 재현 여부 (M0에서 확인한다)
+- 백그라운드 탭에서 worker 루프가 받는 브라우저 스로틀링 (M1 끝에서 확인한다)
+- 정적 호스트의 파일 크기 한도와 시작 스냅샷의 실제 크기 (M3a에서 크기를 재고, M5에서 한도를 조회한다)
+- `emulator.exe`와 `libandroid-emu-*.dll`의 라이선스 귀속. 판단하지 않고 REA 대상에서 뺐다(3장)
