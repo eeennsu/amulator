@@ -6,3 +6,5 @@ coverage/
 .DS_Store
 third_party/
 /out/
+plugin/server/
+plugin/web/

@@ -1,0 +1,7 @@
+{
+  "name": "amulator",
+  "version": "0.1.0",
+  "description": "Drive a browser RISC-V emulator from Claude Code over MCP",
+  "author": { "name": "eeennsu" },
+  "license": "MIT"
+}
