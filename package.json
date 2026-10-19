@@ -11,7 +11,8 @@
     "guest:build": "node scripts/buildBaremetal.mjs",
     "riscv-tests:build": "node scripts/buildRiscvTests.mjs",
     "build:plugin": "node packages/mcp/scripts/buildPlugin.mjs",
-    "smoke:plugin": "pnpm --filter @amulator/mcp exec node --import tsx scripts/smokePlugin.mjs"
+    "smoke:plugin": "pnpm --filter @amulator/mcp exec node --import tsx scripts/smokePlugin.mjs",
+    "e2e": "node packages/mcp/scripts/e2e.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0 || ^10.0.1",
