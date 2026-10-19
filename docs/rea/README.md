@@ -108,7 +108,7 @@ qemu, https://android.googlesource.com/platform/external/qemu/+/refs/heads/emu-m
 
 막힌 점은 없다. 다음 태스크가 알아 둘 주의점은 다음과 같다.
 
-- **호출마다 Ghidra 세션을 새로 연다.** CLI 호출 하나가 별도 프로세스라 임포트와 자동 분석을 매번 다시 한다(작은 `qemu-img.exe`도 65~81초). 49 MiB급 `qemu-system-x86_64-headless.exe`는 분 단위가 아니라 수십 분을 각오한다(rea-windows.md 6.1절의 추정이었고, 실측은 7절에 있다. 호출 하나가 약 65~67분이었다). 한 번 얻은 결과는 파일로 저장해 두고 그 파일을 읽는다. 같은 질의를 되풀이할 때만 `--snapshot`이 효과가 있다.
+- **호출마다 Ghidra 세션을 새로 연다.** CLI 호출 하나가 별도 프로세스라 임포트와 자동 분석을 매번 다시 한다(작은 `qemu-img.exe`도 65~81초). 49 MiB급 `qemu-system-x86_64-headless.exe`는 분 단위가 아니라 수십 분을 각오한다(rea-windows.md 6.1절의 추정이었고, 실측은 7절에 있다. 호출 하나가 약 63~67분이었다). 한 번 얻은 결과는 파일로 저장해 두고 그 파일을 읽는다. 같은 질의를 되풀이할 때만 `--snapshot`이 효과가 있다.
 - **출력이 크다.** `rea function`의 JSON이 840 KB였다(의사코드와 어셈블리 포함). MCP로 쓸 때는 Claude Code의 도구 출력 한도(25,000 토큰)에 걸릴 수 있으니 큰 함수는 CLI로 파일에 저장하고 필요한 필드만 읽는다. 의사코드 원문은 레포에 넣지 않는다.
 - **분석 중 임시 자원.** 이번 실행 뒤 남은 `java` 프로세스와 `%TEMP%`의 임시 디렉터리는 없었다. 호출이 비정상 종료되면 REA 문서대로 비공개 런타임 파일이 남을 수 있다.
 - **JDK 경로의 `+`.** 폴더 이름 `jdk-21.0.12.1+1`의 `+`는 doctor, CLI, MCP 등록 모두에서 문제가 없었다.
@@ -122,7 +122,7 @@ PowerShell:
 $env:JAVA_HOME = 'C:\tools\jdk-21.0.12.1+1'
 $env:GHIDRA_INSTALL_DIR = 'C:\tools\ghidra_12.1.4_PUBLIC'
 $env:REA_ANALYSIS_PROVIDER = 'ghidra'
-$env:REA_GHIDRA_STARTUP_TIMEOUT_MS = '1500000'   # 기본 330초. 49 MiB 본체는 7200000이 필요했다(7.1절 실측)
+$env:REA_GHIDRA_STARTUP_TIMEOUT_MS = '7200000'   # 기본 330초. 49 MiB 본체는 호출당 63~67분이 걸렸다(7.2절 실측)
 $env:GHIDRA_HEADLESS_MAXMEM = '4G'               # 기본 2G. 49 MiB 본체는 4G로 끝났다(7.1절 실측)
 npx -y rea-agents@6.7.0 analyze '<대상 경로>' --provider ghidra --json > out.json
 ```
@@ -175,4 +175,4 @@ Git Bash는 `export JAVA_HOME='C:\tools\jdk-21.0.12.1+1'`처럼 같은 변수를
 - 닻을 넓게 잡는다. 질의 하나(`goldfish`, `WHPX:` 같은 부분 문자열)가 문자열 수십 개와 그것을 참조하는 함수를 한 번에 돌려주므로 호출 수 대비 정보가 가장 많다. 이번 `goldfish_tty`, `pci_1` 질의는 너무 좁았다.
 - 함수 본체와 콜 그래프가 필요하면 `rea function <대상> <주소>`를 주소마다 병렬로 돌린다. 호출 하나가 약 65분이고 힙은 4G면 되었다. 의사코드는 레포에 넣지 않는다.
 - 호출을 병렬로 4개 넘게 돌리기 전에 가용 메모리를 본다(위 메모리 항목).
-- 길게 돌리는 호출은 이번처럼 Git Bash에서 `nohup`으로 따로 띄우고, 결과와 PID를 파일로 남긴다. 띄운 프로세스의 PID를 로그 옆 파일에 적어 두고, 중단할 때는 그 PID만 끈다. 같은 PC에서 다른 세션의 Java(IDE, 다른 Ghidra)가 돌 수 있으므로 `java.exe` 이름만 보고 끄지 않는다. Git Bash의 `$!`는 MSYS PID라서 Git Bash의 `kill`로 끈다(`Stop-Process`로 끄면 엉뚱한 프로세스가 죽을 수 있다). 자식 `java.exe`의 Windows PID를 꼭 찾아야 하면 이 호출의 명령줄에만 있는 값(임시 폴더 `rea-ghidra-<id>` 경로나 질의 문자열)이 들어 있는지로 확인한 프로세스만 끈다.
+- 길게 돌리는 호출은 이번처럼 Git Bash에서 `nohup`으로 따로 띄우고, 결과와 PID를 파일로 남긴다. 띄운 프로세스의 PID를 로그 옆 파일에 적어 두고, 중단할 때는 그 PID만 끈다. 같은 PC에서 다른 세션의 Java(IDE, 다른 Ghidra)가 돌 수 있으므로 `java.exe` 이름만 보고 끄지 않는다. Git Bash의 `$!`는 MSYS PID라서 Git Bash의 `kill`로 끈다(`Stop-Process`로 끄면 엉뚱한 프로세스가 죽을 수 있다). 자식 `java.exe`의 Windows PID를 꼭 찾아야 하면 명령줄에 그 호출의 임시 폴더(`rea-ghidra-<id>`) 경로가 들어 있는지로 확인한 프로세스만 끄고, 부모 `node.exe`는 그 `java.exe`의 부모 PID로 찾는다. 질의 문자열은 기준으로 쓰지 않는다. `goldfish`가 `goldfish_tty` 호출의 명령줄에도 걸리듯 동시에 도는 다른 호출과 겹칠 수 있다.

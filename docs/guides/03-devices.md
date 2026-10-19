@@ -50,7 +50,7 @@
 1. 접근 디스패치의 같은 점과 다른 점. QEMU는 `MemoryRegionOps`에 `valid`(게스트가 해도 되는 접근 폭)와 `impl`(콜백이 구현한 폭)을 따로 선언하고, `address_space_rw`가 영역을 찾은 뒤 `valid`를 벗어나면 거부하고 `impl`과 다르면 `access_with_adjusted_size`가 나눠 부른다. 이 에뮬레이터의 `createBus`는 RAM을 먼저 보고 장치를 선형 탐색하며, 폭이나 정렬이 맞지 않으면 나누지 않고 `BusFault`를 낸다. 두 선언이 하나로 합쳐져 있는 셈이다. 이 단순화가 통하는 조건은 무엇이고, M3의 리눅스 드라이버가 들어오면 깨질 수 있는 곳은 어디인가.
 2. 게스트가 장치 위치를 아는 방법. x86 안드로이드는 ACPI AML(`GFSH0001`~`0008`)로 알리고, 이 에뮬레이터는 주소를 `hw.h`에 박아 두고 테스트로 일치를 지킨다. 왜 다른가. M3a에서 DTB를 쓰게 되면 `memoryMap.ts`와 `hw.h`의 역할은 어떻게 바뀌는가.
 3. 같은 문제(문자를 호스트로 내보내기)의 세 가지 답. `uart16550.ts`, QEMU의 `serial.c`(16550, 8바이트 영역), `goldfish_tty.c`(`TTY_PUT_CHAR`와 `TTY_CMD` 레지스터, 0x1000 영역). 이 에뮬레이터가 16550을 고른 이유는 무엇인가. `goldfish_tty` 문자열이 x86 본체 바이너리에 있는데, x86 보드는 이 장치를 만드는가. 소스(`pc_piix.c`의 goldfish 목록)와 REA 증거를 함께 근거로 답한다.
-4. 타이머. QEMU의 `sifive_clint_write_timecmp`는 `mtimecmp`를 쓸 때 이미 지났으면 MTIP를 바로 올리고, 아니면 `timer_mod`로 만기에 콜백이 올리게 한다(이벤트 기반). 이 에뮬레이터는 `timerPending`을 `syncInterrupts`가 256명령어마다, 그리고 CLINT 쓰기 직후에 확인한다(폴링). 어떤 오차가 생기는가. `nextTimerDeadlineMicros`와 worker의 `idleDelayMs`가 이 오차를 어떻게 줄이는가.
+4. 타이머. QEMU의 `sifive_clint_write_timecmp`는 `mtimecmp`를 쓸 때 이미 지났으면 MTIP를 바로 올리고, 아니면 `timer_mod`로 만기에 콜백이 올리게 한다(이벤트 기반). 이 에뮬레이터는 `timerPending`을 `syncInterrupts`가 256명령어마다, CLINT 쓰기 직후에, 그리고 `wfi`로 쉬는 동안에는 `settleIdle` 안에서 `run`의 반복마다 확인한다(폴링). 어떤 오차가 생기는가. `nextTimerDeadlineMicros`와 worker의 `idleDelayMs`가 이 오차를 어떻게 줄이는가.
 5. 상태를 담는 방법. QEMU는 장치마다 `VMStateDescription`을 두고(`goldfish_tty.c` 66줄, `serial.c`의 `vmstate_serial`), 이 에뮬레이터는 `saveState`/`loadState`와 zod 스키마를 둔다. UART의 수신 큐와 `wake` 래치를 왜 저장해야 하는가. 이 질문은 7단계(스냅샷) 노트와 이어지므로 여기서는 장치 쪽 근거만 적는다.
 
 ## 4. 대응하는 증거와 소스 위치

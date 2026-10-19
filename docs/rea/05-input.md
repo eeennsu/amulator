@@ -32,7 +32,7 @@ REA 밖에서, 비-헤드리스 EXE의 ASCII 문자열을 읽기 전용으로 �
 - 문자열 주소는 PE 헤더에서 계산한 값과 같았다(`.rdata`).
 - 세 함수는 모두 78바이트이고, `pci_1`과 `pci_10`의 시작 주소 간격이 `0x2d0`, `pci_10`과 `pci_11`의 간격이 `0x50`이다. `0x2d0`은 `0x50`(80바이트 정렬)의 9배라서, 같은 크기의 함수가 `id` 순서대로 80바이트 간격으로 붙어 있다는 뜻이다. 소스에서는 매크로 `VIRTIO_INPUT_MT_PCI_INSTANCE_INIT(id)`(`android-qemu2-glue/emulation/virtio-input-multi-touch.c` 449줄)가 `id` 1~11마다 인스턴스 초기화 함수 `virtio_input_multi_touch_pci_init<id>`를 찍어 낸다. 이 함수는 `OBJECT_CHECK`로 형변환하고(`TYPE_VIRTIO_INPUT_MULTI_TOUCH_PCI(id)` 문자열이 거기 쓰인다, 48~50줄) `virtio_instance_init_common`을 부른다(추정: 크기와 문자열 사용에서 맞춘 것이다).
 - 데이터 참조 세 곳은 `.rdata`의 구조체 항목으로 보인다. `pci_10`(`0x142440990`)과 `pci_11`(`0x1424409f8`)은 `0x68`(104)바이트, `pci_1`(`0x1424405e8`)과 `pci_10`은 `0x3a8`(= 9 × `0x68`) 떨어져 있다. 소스의 `TypeInfo`(`include/qom/object.h` 467줄)는 64비트에서 포인터 크기 필드 13개(`name`부터 `interfaces`까지)라 104바이트이고, 소스의 `types[]`(481줄)가 `VIRTIO_INPUT_MT_PCI_TYPE_INFO(id)`(473줄)를 `id` 순서로 연달아 놓는다. 간격이 모두 104의 배수인 것은 이 항목들이 `TypeInfo`라는 추정과 맞는다.
-- 바이너리에 `_2`~`_9`는 이 질의에 걸리지 않았다(문자열이 `pci_1`을 포함하지 않아서다). 11개(화면 번호 1~11)가 바이너리에 모두 있는지는 이번에 확인하지 않았다.
+- 바이너리에 `_2`~`_9`는 이 질의에 걸리지 않았다(문자열이 `pci_1`을 포함하지 않아서다). 11개(`id` 1~11, 화면 번호 0~10)가 바이너리에 모두 있는지는 이번에 확인하지 않았다.
 
 ## 2. 멀티터치 변환: `Unexpected MTS pointer update`
 
@@ -54,7 +54,7 @@ REA 밖에서, 비-헤드리스 EXE의 ASCII 문자열을 읽기 전용으로 �
 | `FUN_140548930`(1,802 B) | `multitouch-screen.c` `multitouch_update_pointer`(785줄). 마우스 눌림·이동·뗌을 `EV_ABS` 열로 푼다 |
 | (이번에 보지 않음) | `virtio-input.c` `virtio_input_send`(22줄). 문자열 `virtio_input_send`가 파일에 2건 있으나 참조는 따라가지 않았다 |
 
-이 에뮬레이터와의 대응은 [가이드 05](../guides/05-input.md) 4절에 있다. 요점은 두 가지다. 진짜 에뮬레이터는 마우스 하나를 `FUN_140548930` 같은 변환 함수가 여러 `EV_ABS` 이벤트로 풀어 virtio 장치로 보내고, 이 에뮬레이터는 `{x, y, down}` 한 샘플을 장치 큐에 넣는다. 그리고 장치 타입은 화면 번호(displayId)마다 하나씩 있다. 소스는 `virtio_input_multi_touch_pci_1`~`11`을 등록하고(`VIRTIO_INPUT_MAX_NUM`은 11, `virtio-input-multi-touch.h` 34줄), 바이너리 질의에서는 `_1`, `_10`, `_11`만 확인했다. 손가락 슬롯(`ABS_MT_SLOT`)은 이 번호와 별개로 한 장치 안에서 `multitouch-screen.c`가 다룬다.
+이 에뮬레이터와의 대응은 [가이드 05](../guides/05-input.md) 4절에 있다. 요점은 두 가지다. 진짜 에뮬레이터는 마우스 하나를 `FUN_140548930` 같은 변환 함수가 여러 `EV_ABS` 이벤트로 풀어 virtio 장치로 보내고, 이 에뮬레이터는 `{x, y, down}` 한 샘플을 장치 큐에 넣는다. 그리고 장치 타입은 화면 번호(displayId)마다 하나씩 있다. 소스는 `virtio_input_multi_touch_pci_1`~`11`을 등록하고(`VIRTIO_INPUT_MAX_NUM`은 11, `virtio-input-multi-touch.h` 34줄), 접미사는 화면 번호(0~10)에 1을 더한 값이다. 바이너리 질의에서는 `_1`, `_10`, `_11`만 확인했다. 손가락 슬롯(`ABS_MT_SLOT`)은 이 번호와 별개로 한 장치 안에서 `multitouch-screen.c`가 다룬다.
 
 ## 4. 바이너리와 소스의 어긋남, 한계
 
@@ -65,6 +65,6 @@ REA 밖에서, 비-헤드리스 EXE의 ASCII 문자열을 읽기 전용으로 �
 
 ## 5. 노트에 쓸 수 있는 것
 
-- virtio-input 멀티터치 장치 타입은 화면 번호(displayId)마다 하나씩 있다. 소스는 `virtio_input_multi_touch_pci_<1..11>`을 등록하고, `id`는 `s_virtio_input_multi_touch[(id)-1]`에 저장되는 화면 번호다(`virtio-input-multi-touch.c` 417줄). `android_virtio_send_touch_as_mt`가 `displayId`로 장치를 고르고(95~99줄), `main.cpp`가 `id = 1..VIRTIO_INPUT_MAX_NUM`(11)으로 `-device`를 붙인다(865줄). 이 바이너리 질의에서는 `_1`, `_10`, `_11`의 같은 모양 78바이트 초기화 함수만 확인했다. 이 에뮬레이터는 터치 장치가 하나이고 한 손가락(`down` 플래그)이다.
+- virtio-input 멀티터치 장치 타입은 화면 번호(displayId)마다 하나씩 있다. 소스는 `virtio_input_multi_touch_pci_<1..11>`을 등록하고, 접미사 `id`는 화면 번호(displayId) + 1이다. 장치는 `s_virtio_input_multi_touch[(id)-1]`에 저장되고(`virtio-input-multi-touch.c` 417줄), `android_virtio_send_touch_as_mt`가 `displayId`(0~10, 범위 밖이면 0)를 그 배열의 첨자로 써서 장치를 고른다(95~99줄). `main.cpp`가 `id = 1..VIRTIO_INPUT_MAX_NUM`(11)으로 `-device`를 붙인다(865줄). 이 바이너리 질의에서는 `_1`, `_10`, `_11`의 같은 모양 78바이트 초기화 함수만 확인했다. 이 에뮬레이터는 터치 장치가 하나이고 한 손가락(`down` 플래그)이다.
 - 마우스를 `EV_ABS` 열로 바꾸는 함수(`FUN_140548930`)는 1,802바이트로, 78바이트짜리 초기화 함수들보다 훨씬 크다. 손가락 슬롯, 트래킹 ID, 압력 처리가 들어 있어서다(소스 기준). 이 에뮬레이터에는 이 구간에 해당하는 코드가 없고 `{x, y, down}` 샘플이 곧바로 장치 큐로 간다.
 - Qt 구간을 소스로만 읽었다는 점과 그 이유를 노트에 그대로 적는다.
