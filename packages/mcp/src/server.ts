@@ -16,9 +16,9 @@ const parseCli = (): { webRoot: string; dataDir: string } | undefined => {
     });
     const dataDir = values['data-dir'];
     if (!dataDir) return undefined;
-    // Default: the web build bundled next to this file.
+    // Default: the plugin layout ships the bundle in server/ and the web build in web/.
     const webRoot =
-      values['web-root'] ?? path.join(path.dirname(fileURLToPath(import.meta.url)), 'web');
+      values['web-root'] ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'web');
     return { webRoot, dataDir };
   } catch {
     return undefined;
@@ -35,10 +35,16 @@ const main = async (): Promise<void> => {
   const stdio = serveStdio(() => createAmulatorServer(bridge));
 
   // The bridge listener would keep the process alive after Claude Code closes the pipe.
+  let shuttingDown = false;
   const shutdown = (): void => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     void Promise.all([stdio.close(), bridge.close()]).finally(() => process.exit(0));
   };
+  // After a stdout write error the SDK transport drops its stdin listeners, so 'end' alone is not enough.
   process.stdin.once('end', shutdown);
+  process.stdin.once('close', shutdown);
+  process.stdout.once('error', shutdown);
   process.once('SIGINT', shutdown);
   process.once('SIGTERM', shutdown);
 };
