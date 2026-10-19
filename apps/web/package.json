@@ -1,0 +1,21 @@
+{
+  "name": "@amulator/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "test": "vitest run",
+    "typecheck": "tsc -b"
+  },
+  "dependencies": {
+    "@amulator/core": "workspace:*",
+    "@xterm/xterm": "^6.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.5"
+  }
+}
