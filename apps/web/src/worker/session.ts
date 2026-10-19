@@ -42,20 +42,32 @@ export const createSession = ({ store, clock, onUartTransmit }: SessionDeps): Se
     machine.loadElf(program);
   };
 
-  // 저장된 스냅샷이 없는 것은 정상이고, 있는데 못 쓰는 것은 warning으로 알린다.
+  // 복원 실패는 머신을 건드리지 않으므로 새로 부팅한 상태로 이어 간다.
+  const freshBootWarning = (
+    cause: string,
+    error: unknown,
+  ): { restored: false; warning: string } => {
+    const reason = error instanceof Error ? error.message : String(error);
+    const warning = `${cause}: ${reason}`;
+    console.warn(warning, error);
+    return { restored: false, warning };
+  };
+
+  // 저장된 스냅샷이 없는 것은 정상이고, 저장소를 못 읽거나 있는데 못 쓰는 것은 warning으로 알린다.
   const attemptRestore = async (): Promise<{ restored: boolean; warning?: string }> => {
     const { imageHash } = requireLoaded();
+    let stored: Uint8Array | undefined;
     try {
-      const stored = await store.get(imageHash);
-      if (stored === undefined) return { restored: false };
+      stored = await store.get(imageHash);
+    } catch (error: unknown) {
+      return freshBootWarning('스냅샷 저장소를 읽지 못해 새로 부팅했다', error);
+    }
+    if (stored === undefined) return { restored: false };
+    try {
       restoreSnapshot(machine, await gunzip(stored), imageHash);
       return { restored: true };
     } catch (error: unknown) {
-      // 복원 실패는 머신을 건드리지 않으므로 새로 부팅한 상태로 이어 간다.
-      const reason = error instanceof Error ? error.message : String(error);
-      const warning = `저장된 스냅샷을 복원하지 못해 새로 부팅했다: ${reason}`;
-      console.warn(warning, error);
-      return { restored: false, warning };
+      return freshBootWarning('저장된 스냅샷을 복원하지 못해 새로 부팅했다', error);
     }
   };
 

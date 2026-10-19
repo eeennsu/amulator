@@ -123,7 +123,9 @@ describe('session', () => {
       const { session, output } = newSession(store);
       const result = await session.boot(readElf('paint.elf'));
       expect(result.restored).toBe(false);
-      expect(result.warning).toContain('IndexedDB를 열 수 없다');
+      expect(result.warning).toBe(
+        '스냅샷 저장소를 읽지 못해 새로 부팅했다: IndexedDB를 열 수 없다',
+      );
       expect(warn).toHaveBeenCalledOnce();
       runUntilOutput(session, output);
     },
@@ -207,7 +209,7 @@ describe('session', () => {
       const { session, output } = newSession(store);
       const result = await session.boot(paint);
       expect(result.restored).toBe(false);
-      expect(result.warning).toBeDefined();
+      expect(result.warning).toContain('저장된 스냅샷을 복원하지 못해 새로 부팅했다');
       expect(warn).toHaveBeenCalledOnce();
       runUntilOutput(session, output);
     },
@@ -225,7 +227,7 @@ describe('session', () => {
       const { session, output } = newSession(store);
       const result = await session.boot(paint);
       expect(result.restored).toBe(false);
-      expect(result.warning).toBeDefined();
+      expect(result.warning).toContain('저장된 스냅샷을 복원하지 못해 새로 부팅했다');
       expect(warn).toHaveBeenCalledOnce();
       runUntilOutput(session, output);
     },
