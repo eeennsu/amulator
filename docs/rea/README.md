@@ -71,9 +71,11 @@ claude mcp add --scope local rea `
 
 - 결과: `Added stdio MCP server rea ... to local config`, 수정된 파일은 `C:\Users\xxx99\.claude.json`의 프로젝트 `C:\Users\xxx99\Documents\GitHub\portfolio\amulator` 항목이다.
 - 확인: 같은 폴더에서 `claude mcp get rea`가 `Scope: Local config`, `Status: √ Connected`, 위 세 환경변수를 보여 준다.
-- 등록한 MCP는 **다음 세션부터** 도구로 보인다. 이 세션의 분석은 REA CLI로 했다.
-- 제거: 메인 레포 루트에서 `claude mcp remove rea -s local`.
-- 주의: local scope는 등록한 폴더에 묶인다. `.claude\worktrees\...` 아래 워크트리에서 연 세션이 이 등록을 보는지는 확인하지 않았다(미확인). 안 보이면 그 폴더에서 같은 명령을 한 번 더 실행한다.
+- **프로젝트 키가 드라이브 문자 대소문자로 둘로 갈린다.** `.claude.json`의 `projects`에는 같은 폴더가 `C:/Users/xxx99/Documents/GitHub/portfolio/amulator`와 `c:/Users/xxx99/Documents/GitHub/portfolio/amulator` 두 키로 있다. 소문자 키는 폴더를 소문자 드라이브 문자로 연 쪽(예: VS Code 확장)이 쓰는 것으로 보인다(추정). 처음에는 대문자 키에만 `rea`가 있었다. 소문자 드라이브 문자를 작업 폴더로 한 `claude mcp add --scope local`을 한 번 더 실행해(2026-10-19, CLI로만 했고 `.claude.json`을 손으로 고치지 않았다) **두 키 모두 `mcpServers`에 `rea`가 들어 있다**. 두 항목의 command, args, env는 같다. 소문자 폴더에서 `claude mcp get rea`도 `Status: ✔ Connected`를 보였다.
+- 세션에서 `rea` 도구가 실제로 보이는지는 **아직 확인하지 않았다**. 이 세션의 분석은 REA CLI로 했다. 새 세션을 열어 `/mcp` 목록에 `rea`가 있는지 본다. 없으면 그 세션이 연 폴더의 철자로 아래 명령을 실행한다.
+  - 소문자 드라이브 문자로 연 세션: PowerShell은 경로 철자를 대문자로 바꾸므로, 소문자 철자의 폴더에서 CLI를 직접 띄워야 한다. 예를 들어 Node의 `child_process.spawnSync('C:\\Users\\xxx99\\.local\\bin\\claude.exe', ['mcp','add','--scope','local','rea', …], { cwd: 'c:\\Users\\xxx99\\Documents\\GitHub\\portfolio\\amulator' })`로 3절 위 명령의 인자를 그대로 넘긴다. VS Code 통합 터미널처럼 작업 폴더가 소문자로 열려 있으면 3절 위 명령을 그대로 쓰면 된다(미시험).
+  - `.claude\worktrees\...` 아래 워크트리에서 연 세션: 프로젝트 키가 달라서 안 보일 수 있다(미확인). 그 폴더에서 3절 위 명령을 한 번 더 실행한다.
+- 제거: 메인 레포 루트에서 `claude mcp remove rea -s local`. 두 키에 모두 넣었으므로 소문자 철자의 폴더에서도 한 번 더 실행해야 지워진다.
 
 ## 4. 분석 대상의 라이선스 확인
 

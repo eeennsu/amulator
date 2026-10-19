@@ -8,14 +8,14 @@
 
 ## 1. 흐름 한눈에 보기
 
-런처의 `main`은 크게 여섯 단계다. 번호는 2절 읽기 순서의 번호와 같다.
+런처의 `main`은 크게 여섯 단계다. 항목 끝의 괄호는 2절 읽기 순서에서 그 단계를 읽는 번호다. 2절의 0번(배경 읽기)과 2번(OS 버전 확인)은 이 여섯 단계에 들어가지 않는다.
 
-1. 인자 훑기: `-kill`, `-verbose`, `-qemu-top-dir`, `-engine classic` 같은 런처용 옵션을 걸러 낸다.
-2. 옵션 해석: `-avd`/`@이름`, `-no-window`, `-accel-check`, `-list-avds` 등을 플래그로 바꾼다.
-3. AVD에서 ABI 읽기: AVD의 `config.ini`에서 대상 CPU 아키텍처(`avdArch`)를 얻는다.
-4. 본체 경로 조립: `<에뮬레이터 폴더>\qemu\<OS>-<호스트 CPU>\qemu-system-<게스트 CPU>[-headless].exe`를 만들고 존재하는 후보를 고른다.
-5. 환경 준비: DLL 검색 경로(`lib64`, `gles_swiftshader` 또는 `gles_angle`, `vulkan`)와 환경변수를 정한다.
-6. 본체 실행: 인자를 인용한 뒤 `safe_execv`로 본체를 띄운다. 윈도우에서는 exec이 아니라 자식 프로세스를 만들고 기다린다.
+1. 인자 훑기: `-kill`, `-verbose`, `-qemu-top-dir`, `-engine classic` 같은 런처용 옵션을 걸러 낸다. (→ 2절 1번)
+2. 옵션 해석: `-avd`/`@이름`, `-no-window`, `-accel-check`, `-list-avds` 등을 플래그로 바꾼다. (→ 2절 3·4번)
+3. AVD에서 ABI 읽기: AVD의 `config.ini`에서 대상 CPU 아키텍처(`avdArch`)를 얻는다. (→ 2절 5·6번)
+4. 본체 경로 조립: `<에뮬레이터 폴더>\qemu\<OS>-<호스트 CPU>\qemu-system-<게스트 CPU>[-headless].exe`를 만들고 존재하는 후보를 고른다. (→ 2절 7·8번)
+5. 환경 준비: DLL 검색 경로(`lib64`, `gles_swiftshader` 또는 `gles_angle`, `vulkan`)와 환경변수를 정한다. (→ 2절 9번)
+6. 본체 실행: 인자를 인용한 뒤 `safe_execv`로 본체를 띄운다. 윈도우에서는 exec이 아니라 자식 프로세스를 만들고 기다린다. (→ 2절 10·11번)
 
 런처는 CPU 가속기(WHPX, AEHD, KVM)를 고르지 않는다. `main-emulator.cpp`에는 가속기 관련 코드가 없다(`whpx`, `aehd`, `kvm`, `hvf`로 검색해 0건). 선택은 본체 쪽이다. `android-qemu2-glue/main.cpp`의 2713줄과 2744줄이 `handleCpuAcceleration`을 부른다. 판정 로직은 internals 10.2절이 `CpuAccelerator.cpp` 기준으로 정리했다(그 절은 `emu-master-dev` 기준이다). 런처는 `-accel-check`일 때 `emulator-check accel`을 대신 실행해 줄 뿐이다.
 

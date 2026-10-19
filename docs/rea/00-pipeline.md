@@ -59,5 +59,5 @@ REA(`rea-agents` 6.7.0) CLI와 Ghidra 12.1.4로 GPL 대상 중 가장 작은 `qe
 ## 3. 결론과 다음 단계
 
 - REA + Ghidra 파이프라인은 이 PC에서 끝까지 동작한다. 이슈 #1701도 재현되지 않았다([README.md](README.md) 2절).
-- MCP 경로는 이 세션에서 쓰지 않았다. 등록은 끝났고 다음 세션부터 `open_binary`(provider `ghidra`) 등으로 쓸 수 있다.
+- MCP 경로는 이 세션에서 쓰지 않았다. 등록은 끝났지만(두 프로젝트 키 모두, [README.md](README.md) 3절) 세션에서 `rea` 도구가 보이는지는 새 세션의 `/mcp`로 확인해야 한다. 보이면 `open_binary`(provider `ghidra`) 등으로 쓴다.
 - Task 16은 `qemu-system-x86_64-headless.exe`를 CLI로 열 때 시작 제한과 힙을 더 크게 잡고, 백그라운드 실행과 로그, PID 파일을 쓰며, 결과 JSON을 파일에 저장해 두고 필요한 필드만 읽는다.
