@@ -31,6 +31,13 @@
 #define CLINT_MTIMECMP 0x4000u
 #define CLINT_MTIME 0xBFF8u
 
+/* 터치 레지스터 offset. 32비트 접근만 받는다. X·Y·DOWN은 큐의 맨 앞 이벤트이고 비어 있으면 0이다. */
+#define TOUCH_COUNT 0x00u /* 읽기 전용: 큐에 쌓인 이벤트 수 */
+#define TOUCH_X 0x04u
+#define TOUCH_Y 0x08u
+#define TOUCH_DOWN 0x0Cu
+#define TOUCH_POP 0x10u /* 쓰기: 아무 값이나 쓰면 맨 앞 하나를 꺼낸다 */
+
 /* CSR 비트 */
 #define MSTATUS_MIE (1u << 3)
 #define MIE_MTIE (1u << 7)

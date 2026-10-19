@@ -2,6 +2,8 @@ import { createBus, type Bus } from './bus';
 import { Cpu, PRIVILEGE } from './cpu/cpu';
 import { CSR, MIP_MSIP, MIP_MTIP } from './cpu/csr';
 import { createClint, type Clint, type Clock } from './devices/clint';
+import { createFramebuffer, type Framebuffer } from './devices/framebuffer';
+import { createTouchDevice, type TouchDevice } from './devices/touch';
 import { createUart16550, type Uart16550 } from './devices/uart16550';
 import { loadElfIntoRam, parseElf32, type ElfImage } from './elf';
 import { RAM_SIZE } from './memoryMap';
@@ -22,6 +24,8 @@ export type Machine = {
   readonly ram: Uint8Array;
   readonly uart: Uart16550;
   readonly clint: Clint;
+  readonly framebuffer: Framebuffer;
+  readonly touch: TouchDevice;
   loadElf: (bytes: Uint8Array) => ElfImage; // 세그먼트 적재, pc = entry, a0 = 0, a1 = 0, M 모드
   run: (maxInstructions: number) => RunResult;
   nextTimerDeadlineMicros: () => number | null; // mtimecmp까지 남은 µs, 꺼져 있으면 null
@@ -60,7 +64,10 @@ export const createMachine = ({
     },
   };
 
-  const bus = createBus(ram, [uart, clint]);
+  const framebuffer = createFramebuffer();
+  const touch = createTouchDevice();
+
+  const bus = createBus(ram, [uart, clint, framebuffer, touch]);
   const cpu = new Cpu(bus, clint.mtime);
 
   const syncInterrupts = (): void => {
@@ -108,5 +115,5 @@ export const createMachine = ({
     return compare >= MTIMECMP_DISARMED ? null : Math.max(0, compare - clint.mtime());
   };
 
-  return { cpu, bus, ram, uart, clint, loadElf, run, nextTimerDeadlineMicros };
+  return { cpu, bus, ram, uart, clint, framebuffer, touch, loadElf, run, nextTimerDeadlineMicros };
 };
