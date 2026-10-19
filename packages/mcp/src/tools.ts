@@ -2,20 +2,22 @@ import { McpServer, type CallToolResult } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 
 import {
+  DRAG_STEPS_MAX,
   okResultSchema,
   pointSchema,
+  PROGRAM_NAMES,
   screenshotResultSchema,
   snapshotLoadResultSchema,
   snapshotSaveResultSchema,
   type BridgeRequest,
 } from '@amulator/core/control/protocol';
 import { FB_HEIGHT, FB_WIDTH } from '@amulator/core/memoryMap';
+import { EMULATOR_VERSION } from '@amulator/core/version';
 
 import {
   BridgeDisconnectedError,
   BridgePageError,
   BridgeTimeoutError,
-  PROGRAMS,
   type BridgeServer,
 } from './bridgeServer';
 import { openBrowser } from './openBrowser';
@@ -31,10 +33,8 @@ export const TOOL_NAMES = [
   'emulator_resume',
 ] as const;
 
-const SERVER_INFO = { name: 'amulator', version: '0.0.0' };
+const SERVER_INFO = { name: 'amulator', version: EMULATOR_VERSION };
 const DEFAULT_PROGRAM = 'paint';
-// Mirrors the bridge protocol's drag limit; the emulator page validates it again.
-const DRAG_STEPS_MAX = 100;
 
 const SCREEN = `${FB_WIDTH}x${FB_HEIGHT}`;
 const POINT_HELP = `Pixel coordinates on the ${SCREEN} screen; the origin is the top-left corner.`;
@@ -91,7 +91,7 @@ export const createAmulatorServer = (
         'emulator tools wait a few seconds for the page to connect, then fail.',
       inputSchema: z.object({
         program: z
-          .enum(PROGRAMS)
+          .enum(PROGRAM_NAMES)
           .default(DEFAULT_PROGRAM)
           .describe('Guest program to run: hello (text), clock (text), or paint (touch drawing).'),
         openBrowser: z

@@ -16,6 +16,7 @@ import {
   bridgeResponseSchema,
   SNAPSHOT_TOKEN_HEADER,
   type BridgeRequest,
+  type ProgramName,
 } from '@amulator/core/control/protocol';
 
 export class BridgeTimeoutError extends Error {}
@@ -28,13 +29,10 @@ export const BRIDGE_TIMEOUT_MS = 10_000;
 export const CONNECT_WAIT_MS = 5_000;
 export const MAX_SNAPSHOT_BYTES = 256 * 1024 * 1024;
 
-export const PROGRAMS = ['hello', 'clock', 'paint'] as const;
-export type Program = (typeof PROGRAMS)[number];
-
 export type BridgeServer = {
   readonly port: number;
   readonly token: string;
-  pageUrl: (program: Program) => string;
+  pageUrl: (program: ProgramName) => string;
   isConnected: () => boolean;
   request: (
     method: BridgeRequest['method'],

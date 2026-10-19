@@ -7,8 +7,11 @@ export const SNAPSHOT_TOKEN_HEADER = 'X-Amulator-Token';
 
 export const BRIDGE_ERROR_CODE = { invalidRequest: -32600, internal: -32000 } as const;
 
+export const PROGRAM_NAMES = ['hello', 'clock', 'paint'] as const;
+export type ProgramName = (typeof PROGRAM_NAMES)[number];
+
 const DRAG_STEPS_DEFAULT = 16;
-const DRAG_STEPS_MAX = 100;
+export const DRAG_STEPS_MAX = 100;
 
 const X_MAX = FB_WIDTH - 1;
 const Y_MAX = FB_HEIGHT - 1;
