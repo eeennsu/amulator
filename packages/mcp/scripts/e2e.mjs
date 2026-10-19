@@ -15,12 +15,13 @@ const SNAPSHOT_SUFFIX = '.amus.gz';
 
 const RETRY_INTERVAL_MS = 1_000;
 const WAIT_CAP_MS = 120_000;
-const DRAG_SETTLE_MS = 1_000;
+const SETTLE_MS = 1_000;
 const BACKGROUND_WAIT_MS = 20_000;
-const ALREADY_CONNECTED = 'Already connected';
 
 const DRAG = { from: { x: 40, y: 100 }, to: { x: 280, y: 100 }, steps: 24 };
 const TAP = { x: 160, y: 300 };
+// Drawn after the snapshot is saved, so a screen restored from the snapshot cannot show it.
+const SENTINEL_TAP = { x: 300, y: 20 };
 
 const log = (message) => process.stdout.write(`${new Date().toISOString()} ${message}\n`);
 
@@ -34,43 +35,34 @@ const textOf = (result) =>
   result.content.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join(' ');
 
 // Calls attempt until it returns something other than undefined.
-const retry = async (label, attempt, { intervalMs = RETRY_INTERVAL_MS } = {}) => {
+const retry = async (label, attempt) => {
   const deadline = Date.now() + WAIT_CAP_MS;
   for (;;) {
     const value = await attempt();
     if (value !== undefined) return value;
     check(Date.now() < deadline, `${label} did not succeed within ${WAIT_CAP_MS / 1000} s`);
-    if (intervalMs > 0) await sleep(intervalMs);
+    await sleep(RETRY_INTERVAL_MS);
   }
 };
 
-const tryScreenshot = async () => {
+// Returns the PNG bytes, or undefined while the screenshot fails or is rejected by accept.
+const tryScreenshot = async (accept = () => true) => {
   const result = await call('emulator_screenshot');
   const image = result.content.find((block) => block.type === 'image');
   if (result.isError || !image) {
     log(`screenshot not ready: ${textOf(result)}`);
     return undefined;
   }
-  return Buffer.from(image.data, 'base64');
+  const png = Buffer.from(image.data, 'base64');
+  return accept(png) ? png : undefined;
 };
 
-const screenshotTo = async (label, file) => {
-  const png = await retry(label, tryScreenshot);
+const screenshotTo = async (label, file, accept) => {
+  const png = await retry(label, () => tryScreenshot(accept));
   await writeFile(path.join(OUT_DIR, file), png);
   log(`${label}: saved out/e2e/${file} (${png.length} bytes)`);
+  return png;
 };
-
-// emulator_open answers "Already connected: <url>" while a tab is attached, and just the URL otherwise.
-// A reload leaves a gap of only ~30 ms (the old socket closes, the new page connects), so poll without sleeping.
-const waitForDisconnect = () =>
-  retry(
-    'tab disconnect',
-    async () => {
-      const result = await call('emulator_open', { openBrowser: false });
-      return textOf(result).startsWith(ALREADY_CONNECTED) ? undefined : true;
-    },
-    { intervalMs: 0 },
-  );
 
 const timed = async (action) => {
   const start = performance.now();
@@ -83,7 +75,8 @@ const timed = async (action) => {
 
 // Informational: a covered tab may be throttled, so failures are reported, never thrown.
 const backgroundCheck = async () => {
-  log(`BACKGROUND NOW (waiting ${BACKGROUND_WAIT_MS / 1000} s)`);
+  log('BACKGROUND NOW');
+  log(`waiting ${BACKGROUND_WAIT_MS / 1000} s`);
   await sleep(BACKGROUND_WAIT_MS);
   const total = performance.now();
   const tap = await timed(async () => {
@@ -129,8 +122,8 @@ try {
 
   const drag = await call('emulator_drag', DRAG);
   check(!drag.isError, `emulator_drag failed: ${textOf(drag)}`);
-  await sleep(DRAG_SETTLE_MS);
-  await screenshotTo('after drag', 'after-drag.png');
+  await sleep(SETTLE_MS);
+  const afterDrag = await screenshotTo('after drag', 'after-drag.png');
 
   const saved = await call('emulator_snapshot_save');
   check(!saved.isError, `emulator_snapshot_save failed: ${textOf(saved)}`);
@@ -139,10 +132,23 @@ try {
   check(files.length === 1, `expected one ${SNAPSHOT_SUFFIX} file, found ${files.length}`);
   log(`snapshot file: ${files[0]}`);
 
+  const sentinelTap = await call('emulator_tap', SENTINEL_TAP);
+  check(!sentinelTap.isError, `sentinel tap failed: ${textOf(sentinelTap)}`);
+  await sleep(SETTLE_MS);
+  const sentinel = await screenshotTo('sentinel', 'sentinel.png');
+  check(!sentinel.equals(afterDrag), 'the sentinel tap did not change the screen');
+
+  // The old tab keeps answering with the sentinel screen; only the reloaded tab can differ from it.
   log('RELOAD NOW');
-  await waitForDisconnect();
-  log('tab disconnected');
-  await screenshotTo('after reload', 'after-reload.png');
+  const afterReload = await screenshotTo(
+    'after reload',
+    'after-reload.png',
+    (png) => !png.equals(sentinel),
+  );
+  check(
+    afterReload.equals(afterDrag),
+    'the reloaded screen differs from the saved one: the disk snapshot was not restored',
+  );
 
   await backgroundCheck();
 
