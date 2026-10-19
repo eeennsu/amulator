@@ -19,7 +19,8 @@
         display: block;
         width: 320px;
         height: 480px;
-        border: 1px solid #888;
+        /* outline, not border: the pointer mapping needs the rect to equal the 320x480 canvas */
+        outline: 1px solid #888;
         touch-action: none;
       }
       #terminal {
