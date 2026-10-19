@@ -105,24 +105,75 @@ const reasonOf = (action: () => void): string | undefined => {
   return undefined;
 };
 
-// 복원이 거부되면 이유를 돌려주고, 그때 대상 머신이 그대로인지도 확인한다.
+// 거부 테스트용: 모든 상태 항목을 기본값이 아니고 salt마다 서로 다른 값으로 채운다.
+// 원본과 대상이 같은 값이면 반쯤 쓴 복원이 있어도 비교를 통과하기 때문이다.
+const scramble = ({ machine, state }: Guest, salt: 1 | 2): Machine => {
+  const { cpu, bus, ram, uart, touch, framebuffer } = machine;
+  state.now = salt * 1_000_000; // 생성 시점이 0이라 mtime도 이 값이 된다
+  for (let index = 1; index < cpu.x.length; index += 1) {
+    cpu.x[index] = Math.imul(index + salt, 0x0101_0101);
+  }
+  cpu.pc = 0x8000_1000 + salt * 0x100;
+  cpu.privilege = salt === 1 ? PRIVILEGE.machine : PRIVILEGE.user;
+  cpu.idle = salt === 2;
+  cpu.writeCsr(CSR.mstatus, salt === 1 ? MSTATUS_MIE | MSTATUS_MPP : MSTATUS_MPIE);
+  cpu.writeCsr(CSR.mtvec, 0x8000_0100 + salt * 0x40);
+  cpu.writeCsr(CSR.mepc, 0x8000_0200 + salt * 0x40);
+  cpu.writeCsr(CSR.mcause, 0x8000_0000 + salt);
+  cpu.writeCsr(CSR.mtval, 0x1234_0000 + salt);
+  cpu.writeCsr(CSR.mie, salt === 1 ? MIP_MSIP : MIP_MEIP);
+  cpu.writeCsr(CSR.mscratch, 0xcafe_0000 + salt);
+  cpu.writeCsr(CSR.mcounteren, salt === 1 ? 0b001 : 0b110);
+  cpu.writeCsr(CSR.mcycle, salt * 1000);
+  cpu.writeCsr(CSR.mcycleh, salt * 10);
+  cpu.writeCsr(CSR.minstret, salt * 2000);
+  cpu.writeCsr(CSR.minstreth, salt * 20);
+  // CLINT 쓰기는 mip를 다시 맞추므로 mip 비트는 그 뒤에 정한다
+  bus.write(CLINT_BASE, 4, salt === 1 ? 1 : 0);
+  bus.write(CLINT_BASE + 0x4000, 4, salt * 0x1000);
+  bus.write(CLINT_BASE + 0x4004, 4, salt);
+  cpu.setInterruptPending(MIP_MSIP, salt === 1);
+  cpu.setInterruptPending(MIP_MEIP, salt === 2);
+  bus.write(UART_BASE + 3, 1, 0x80); // DLAB를 켜 DLL·DLM을 쓴다
+  bus.write(UART_BASE + 0, 1, 0x10 + salt);
+  bus.write(UART_BASE + 1, 1, 0x20 + salt);
+  bus.write(UART_BASE + 3, 1, salt === 1 ? 0x03 : 0x1b);
+  bus.write(UART_BASE + 1, 1, salt);
+  bus.write(UART_BASE + 4, 1, salt + 4);
+  bus.write(UART_BASE + 7, 1, 0x70 + salt);
+  uart.receive(Uint8Array.of(salt, salt + 1));
+  if (salt === 2) uart.consumeWakeEvent(); // 깨움 래치도 두 쪽이 다르게 한다
+  touch.push({ x: salt * 10, y: salt * 20, down: salt === 1 });
+  touch.push({ x: 100 + salt, y: 200 + salt, down: true });
+  ram[0x1000] = 0x40 * salt;
+  ram[ram.length - 1] = 0xa0 + salt;
+  framebuffer.pixels[0x20] = 0x30 * salt;
+  framebuffer.pixels[framebuffer.pixels.length - 1] = 0xb0 + salt;
+  framebuffer.dirty = false;
+  return machine;
+};
+
+// 큰 바이트 배열을 뺀 상태 전체. 복원 전후 비교에 쓴다.
+const stateOf = (machine: Machine) => ({
+  cpu: saveCpuState(machine.cpu),
+  uart: machine.uart.saveState(),
+  clint: machine.clint.saveState(),
+  touch: machine.touch.saveState(),
+  dirty: machine.framebuffer.dirty,
+});
+
+// 복원이 거부되면 이유를 돌려주고, 그때 대상 머신이 전혀 바뀌지 않았는지도 확인한다.
 const rejection = (target: Machine, bytes: Uint8Array, imageHash: string): string | undefined => {
-  const before = {
-    pc: target.cpu.pc,
-    x: Array.from(target.cpu.x),
-    ram: target.ram.slice(),
-    pixels: target.framebuffer.pixels.slice(),
-    dirty: target.framebuffer.dirty,
-  };
+  const before = stateOf(target);
+  const ram = target.ram.slice();
+  const pixels = target.framebuffer.pixels.slice();
   const reason = reasonOf(() => {
     restoreSnapshot(target, bytes, imageHash);
   });
   expect(reason).toBeDefined();
-  expect(target.cpu.pc).toBe(before.pc);
-  expect(Array.from(target.cpu.x)).toEqual(before.x);
-  expect(sameBytes(target.ram, before.ram)).toBe(true);
-  expect(sameBytes(target.framebuffer.pixels, before.pixels)).toBe(true);
-  expect(target.framebuffer.dirty).toBe(before.dirty);
+  expect(stateOf(target)).toEqual(before);
+  expect(sameBytes(target.ram, ram)).toBe(true);
+  expect(sameBytes(target.framebuffer.pixels, pixels)).toBe(true);
   return reason;
 };
 
@@ -253,8 +304,25 @@ describe('스냅샷 왕복', () => {
 });
 
 describe('스냅샷 거부', () => {
-  const source = (): Uint8Array => serializeSnapshot(createGuest(undefined, MIB).machine, 'h1');
-  const target = (): Machine => createGuest(undefined, MIB).machine;
+  // 원본(salt 2)과 대상(salt 1)은 검사하는 모든 항목의 값이 서로 다르다.
+  const source = (): Uint8Array =>
+    serializeSnapshot(scramble(createGuest(undefined, MIB), 2), 'h1');
+  const target = (): Machine => scramble(createGuest(undefined, MIB), 1);
+
+  it('원본과 대상은 상태 항목마다 값이 다르다', () => {
+    const [left, right] = [stateOf(target()), stateOf(scramble(createGuest(undefined, MIB), 2))];
+    for (const group of ['cpu', 'uart', 'clint', 'touch'] as const) {
+      const leftEntries = Object.entries(left[group]);
+      const rightEntries = Object.entries(right[group]);
+      expect(leftEntries.map(([key]) => key)).toEqual(rightEntries.map(([key]) => key));
+      leftEntries.forEach(([key, value], index) => {
+        expect(value, `${group}.${key}`).not.toEqual(rightEntries[index]?.[1]);
+      });
+    }
+    const [a, b] = [target(), scramble(createGuest(undefined, MIB), 2)];
+    expect(sameBytes(a.ram, b.ram)).toBe(false);
+    expect(sameBytes(a.framebuffer.pixels, b.framebuffer.pixels)).toBe(false);
+  });
 
   it('이미지 해시가 다르면 image다', () => {
     expect(rejection(target(), source(), 'h2')).toBe('image');
@@ -273,11 +341,7 @@ describe('스냅샷 거부', () => {
   });
 
   it('램 크기가 다른 머신이면 config다', () => {
-    const other = createMachine({
-      clock: { nowMicros: () => 0 },
-      onUartTransmit: () => undefined,
-      ramSize: 32 * MIB,
-    });
+    const other = scramble(createGuest(undefined, 32 * MIB), 1);
     expect(rejection(other, source(), 'h1')).toBe('config');
   });
 
