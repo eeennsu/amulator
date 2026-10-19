@@ -17,7 +17,7 @@
 
 이 에뮬레이터는 모든 명령어를 TS로 해석한다.
 
-1. `Machine.run`이 256개 명령어마다 CLINT 상태를 `mip`에 옮기고(`syncInterrupts`) 쉬는 중인지 본다(`settleIdle`).
+1. `Machine.run`이 256개 명령어마다 CLINT 상태를 `mip`에 옮긴다(`syncInterrupts`). 쉬는 중인지 보는 `settleIdle`은 반복마다 부르고, 쉬는 중일 때는 그 안에서도 `syncInterrupts`를 부른다.
 2. `Cpu.step`이 `wfi`로 쉬는 중이면 깨울 수 있는지 보고, 걸린 인터럽트를 먼저 받고(`takeInterrupt`), 아니면 명령어 하나를 `execute`한다.
 3. `execute`는 `bus.fetch`로 RAM에서 명령어를 가져와 opcode로 가른다. 로드·스토어는 `bus.read`/`bus.write`로 가고, 버스가 던진 `BusFault`는 `step`이 잡아 access fault 트랩으로 바꾼다.
 
@@ -46,7 +46,7 @@
 ## 3. 노트에서 답할 질문
 
 1. 진짜 에뮬레이터는 게스트 명령어를 직접 해석하지 않고 VM exit만 처리한다. `whpx_vcpu_run`의 exit 이유 중 어떤 것이 이 에뮬레이터의 `execute`·`BusFault`·`wfi` 처리에 대응하는가. MMIO exit와 이 에뮬레이터의 MMIO 디스패처(`createBus`의 `deviceAt`)는 어디가 같고 다른가(03 가이드와 이어진다).
-2. TCG의 `cpu_exec` 루프(번역 블록을 찾고, 실행하고, 블록 사이에서 인터럽트를 확인한다)와 이 에뮬레이터의 `Machine.run` + `Cpu.step`은 인터럽트를 확인하는 시점이 어떻게 다른가. 이 에뮬레이터가 256명령어마다 `syncInterrupts`를 부르는 이유는 무엇이고, 그 간격이 게스트에게 어떤 오차로 보이는가.
+2. TCG의 `cpu_exec` 루프(번역 블록을 찾고, 실행하고, 블록 사이에서 인터럽트를 확인한다)와 이 에뮬레이터의 `Machine.run` + `Cpu.step`은 인터럽트를 확인하는 시점이 어떻게 다른가. 이 에뮬레이터가 실행 중에는 256명령어마다, `wfi`로 쉬는 중에는 반복마다 `syncInterrupts`를 부르는 이유는 무엇이고, 그 간격이 게스트에게 어떤 오차로 보이는가.
 3. 이 레포의 `enterTrap`·`exitTrap`과 소스의 `riscv_cpu_do_interrupt`·`helper_mret`를 한 줄씩 대조한다. `mstatus`의 MIE·MPIE·MPP를 바꾸는 방식이 같은가. (`op_helper.c` 657줄의 `helper_mret`는 `MSTATUS_MPIE`를 0으로 쓴다. 이 레포는 1로 둔다. 어느 쪽이 스펙과 riscv-tests에 맞는지는 노트에서 확인한다.)
 4. 정확성을 어떻게 확인하는가. 이 에뮬레이터는 riscv-tests로, 진짜 에뮬레이터는 하드웨어(WHPX)에 맡기거나 TCG 번역의 테스트로 확인한다. 이 에뮬레이터가 지원하지 않는 것(S 모드, MMU, PMP, A·C 확장)은 무엇이고, 어느 마일스톤에서 들어오는가(설계 5장).
 5. 속도의 출처. 한 명령어를 TS로 해석하는 비용과 WHPX가 하드웨어로 실행하는 비용의 차이는 어디서 오는가. 앱 화면의 MIPS 표시(`apps/web/src/main.ts`의 `renderStatus`)가 이 질문의 숫자 근거다. 숫자는 이 PC에서 직접 보고 적는다.

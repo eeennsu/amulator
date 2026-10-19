@@ -122,8 +122,8 @@ PowerShell:
 $env:JAVA_HOME = 'C:\tools\jdk-21.0.12.1+1'
 $env:GHIDRA_INSTALL_DIR = 'C:\tools\ghidra_12.1.4_PUBLIC'
 $env:REA_ANALYSIS_PROVIDER = 'ghidra'
-$env:REA_GHIDRA_STARTUP_TIMEOUT_MS = '1500000'   # 기본 330초. 큰 바이너리는 늘린다
-$env:GHIDRA_HEADLESS_MAXMEM = '4G'               # 기본 2G. 49 MiB급에 얼마가 맞는지는 미확인
+$env:REA_GHIDRA_STARTUP_TIMEOUT_MS = '1500000'   # 기본 330초. 49 MiB 본체는 7200000이 필요했다(7.1절 실측)
+$env:GHIDRA_HEADLESS_MAXMEM = '4G'               # 기본 2G. 49 MiB 본체는 4G로 끝났다(7.1절 실측)
 npx -y rea-agents@6.7.0 analyze '<대상 경로>' --provider ghidra --json > out.json
 ```
 
@@ -161,7 +161,7 @@ Git Bash는 `export JAVA_HOME='C:\tools\jdk-21.0.12.1+1'`처럼 같은 변수를
 - 서로 다른 질의를 동시에 최대 6개 돌렸다. 단독 실행 시간은 재지 않았다. 그래서 63~67분은 동시에 여러 개를 돌린 상태의 값이다.
 - 메모리: 이 PC는 RAM 31.5 GB이고, 시작할 때 가용 메모리가 14.5 GB였다. Ghidra 프로세스 하나가 시작 직후 약 4.5 GB(비공개 메모리)까지 올랐다가 분석 중에는 2.1~4 GB를 썼다. 5G 힙 셋을 동시에 시작했을 때 시스템 가용 메모리가 1.7 GB, 커밋 메모리가 한도 근처(41.6 GB / 42.5 GB, 이후 페이지 파일이 늘어 43 GB)까지 올라서 셋째 호출을 16:30에 중단하고 16:34에 다시 시작했다. 그 뒤 `java` 프로세스 5~6개를 동시에 돌린 동안 내가 본 표본에서 가용 메모리는 2.4 GB 아래로 내려가지 않았다. 힙을 4G로 낮춘 호출도 메모리 부족 오류 없이 끝났다.
 - 분석 단계는 `jstack`으로 표본을 떠서 봤다. 처음 두 호출(16:25 시작)에서 약 19분 뒤(ConstantPropagationAnalyzer), 약 29분 뒤(RttiAnalyzer), 약 39분 뒤(FidAnalyzer), 약 49~67분 뒤(StackVariableAnalyzer)에 각각 그 분석기가 돌고 있었다. 표본이라 경계는 대략이고, 가장 긴 구간은 마지막 스택 변수 분석이었다. RTTI 분석 때 Ghidra 로그에 C++ 타입 이름이 나왔다(예: `android::control::interceptor::InvocationRecord`). 이 이름들이 함수 이름 복원에 쓰이지는 않았고 결과의 함수 이름은 모두 `FUN_<주소>`였다.
-- 정리: 정상 종료한 호출은 REA가 임시 폴더(`%TEMP%\rea-ghidra-<id>`, 대상 사본 51 MB 포함)를 지웠다. PID로 중단한 세 호출의 폴더는 남았고(각 약 590~810 MB, 분석이 진행될수록 커진다) 이 작업에서 확인하고 지웠다. 중단은 그 호출의 `java.exe`와 부모 `node.exe` 프로세스를 Windows PID로 골라 끈 것이다.
+- 정리: 정상 종료한 호출은 REA가 임시 폴더(`%TEMP%\rea-ghidra-<id>`, 대상 사본 51 MB 포함)를 지웠다. PID로 중단한 세 호출의 폴더는 남았고(각 약 590~810 MB, 분석이 진행될수록 커진다) 이 작업에서 확인하고 지웠다. 중단할 때는 그 호출의 명령줄에 있는 질의 문자열로 `java.exe`와 부모 `node.exe`를 확인한 뒤 해당 Windows PID만 끈 것이다(`java.exe` 이름만으로 고르지 않았다).
 - 마지막 호출(`goldfish`)은 시간 상자가 끝난 18:25에 중단했다. 그때 Ghidra는 마지막 단계인 스택 변수 분석(StackVariableAnalyzer)에 들어가 있었다. 뒤의 호출일수록 동시에 도는 호출이 적어서 분석이 빨랐다(RTTI 분석까지 시작 후 약 25분, 앞선 호출은 약 29분). 단독 실행 시간은 재지 않았다.
 
 ### 7.3 못 한 것
@@ -175,4 +175,4 @@ Git Bash는 `export JAVA_HOME='C:\tools\jdk-21.0.12.1+1'`처럼 같은 변수를
 - 닻을 넓게 잡는다. 질의 하나(`goldfish`, `WHPX:` 같은 부분 문자열)가 문자열 수십 개와 그것을 참조하는 함수를 한 번에 돌려주므로 호출 수 대비 정보가 가장 많다. 이번 `goldfish_tty`, `pci_1` 질의는 너무 좁았다.
 - 함수 본체와 콜 그래프가 필요하면 `rea function <대상> <주소>`를 주소마다 병렬로 돌린다. 호출 하나가 약 65분이고 힙은 4G면 되었다. 의사코드는 레포에 넣지 않는다.
 - 호출을 병렬로 4개 넘게 돌리기 전에 가용 메모리를 본다(위 메모리 항목).
-- 길게 돌리는 호출은 이번처럼 Git Bash에서 `nohup`으로 따로 띄우고, 결과와 PID를 파일로 남긴다. Git Bash의 `$!`는 MSYS PID라서, 중단할 때는 `Get-CimInstance Win32_Process`의 명령줄로 `java.exe`와 부모 프로세스를 찾아 Windows PID로 끈다.
+- 길게 돌리는 호출은 이번처럼 Git Bash에서 `nohup`으로 따로 띄우고, 결과와 PID를 파일로 남긴다. 띄운 프로세스의 PID를 로그 옆 파일에 적어 두고, 중단할 때는 그 PID만 끈다. 같은 PC에서 다른 세션의 Java(IDE, 다른 Ghidra)가 돌 수 있으므로 `java.exe` 이름만 보고 끄지 않는다. Git Bash의 `$!`는 MSYS PID라서 Git Bash의 `kill`로 끈다(`Stop-Process`로 끄면 엉뚱한 프로세스가 죽을 수 있다). 자식 `java.exe`의 Windows PID를 꼭 찾아야 하면 이 호출의 명령줄에만 있는 값(임시 폴더 `rea-ghidra-<id>` 경로나 질의 문자열)이 들어 있는지로 확인한 프로세스만 끈다.
