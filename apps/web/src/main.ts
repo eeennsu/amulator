@@ -48,7 +48,7 @@ const run = (program: ProgramName): void => {
         break;
       case 'booted':
         terminal.clear(); // 새로 부팅한 게스트는 처음부터 다시 출력한다
-        setNote(message.restored ? '스냅샷에서 복원했다' : '새로 부팅했다');
+        setNote(message.warning ?? (message.restored ? '스냅샷에서 복원했다' : '새로 부팅했다'));
         break;
       case 'saved':
         setNote(`저장했다 (${message.bytes} B)`);

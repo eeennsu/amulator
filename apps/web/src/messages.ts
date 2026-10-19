@@ -11,7 +11,7 @@ export type MainToWorker =
 
 export type WorkerToMain =
   | { type: 'uartOutput'; bytes: Uint8Array }
-  | { type: 'booted'; restored: boolean }
+  | { type: 'booted'; restored: boolean; warning?: string }
   | { type: 'saved'; bytes: number }
   | { type: 'error'; message: string }
   | { type: 'status'; ips: number };

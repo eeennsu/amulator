@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FB_STRIDE } from '@amulator/core/memoryMap';
 
@@ -69,13 +69,23 @@ const drawLine = (session: Session): void => {
 };
 
 describe('session', () => {
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  beforeEach(() => {
+    warn.mockClear();
+  });
+  afterAll(() => {
+    warn.mockRestore();
+  });
+
   it(
-    '빈 store에서는 새로 부팅한다',
+    '빈 store에서는 경고 없이 새로 부팅한다',
     async () => {
       const { session } = newSession(createMemoryStore());
       const result = await session.boot(readElf('paint.elf'));
       expect(result.restored).toBe(false);
       expect(result.imageHash).toMatch(/^[0-9a-f]{64}$/);
+      expect(result.warning).toBeUndefined();
+      expect(warn).not.toHaveBeenCalled();
     },
     SLOW_TEST_MS,
   );
@@ -95,6 +105,8 @@ describe('session', () => {
       const second = newSession(store);
       const result = await second.session.boot(paint);
       expect(result.restored).toBe(true);
+      expect(result.warning).toBeUndefined();
+      expect(warn).not.toHaveBeenCalled();
       expect(pixel(second.session, 15, 10)).toBe(BLACK);
       expect(pixel(second.session, 100, 100)).toBe(WHITE);
     },
@@ -102,7 +114,7 @@ describe('session', () => {
   );
 
   it(
-    'store를 읽지 못해도 새로 부팅한다',
+    'store를 읽지 못해도 경고와 함께 새로 부팅한다',
     async () => {
       const store: SnapshotStore = {
         ...createMemoryStore(),
@@ -111,6 +123,8 @@ describe('session', () => {
       const { session, output } = newSession(store);
       const result = await session.boot(readElf('paint.elf'));
       expect(result.restored).toBe(false);
+      expect(result.warning).toContain('IndexedDB를 열 수 없다');
+      expect(warn).toHaveBeenCalledOnce();
       runUntilOutput(session, output);
     },
     SLOW_TEST_MS,
@@ -154,7 +168,7 @@ describe('session', () => {
   );
 
   it(
-    '스냅샷을 지우지 못해도 reset은 새로 부팅한다',
+    '스냅샷을 지우지 못해도 reset은 경고를 남기고 새로 부팅한다',
     async () => {
       const store = createMemoryStore();
       const failing: SnapshotStore = {
@@ -168,6 +182,7 @@ describe('session', () => {
       await session.save();
 
       await session.reset();
+      expect(warn).toHaveBeenCalledOnce();
       expect(pixel(session, 15, 10)).toBe(BLACK);
       expect(pixel(session, 100, 100)).toBe(BLACK);
     },
@@ -175,7 +190,7 @@ describe('session', () => {
   );
 
   it(
-    '다른 프로그램의 스냅샷이 같은 키에 있으면 새로 부팅한다',
+    '다른 프로그램의 스냅샷이 같은 키에 있으면 경고와 함께 새로 부팅한다',
     async () => {
       const helloStore = createMemoryStore();
       const hello = newSession(helloStore);
@@ -192,6 +207,26 @@ describe('session', () => {
       const { session, output } = newSession(store);
       const result = await session.boot(paint);
       expect(result.restored).toBe(false);
+      expect(result.warning).toBeDefined();
+      expect(warn).toHaveBeenCalledOnce();
+      runUntilOutput(session, output);
+    },
+    SLOW_TEST_MS,
+  );
+
+  it(
+    '저장된 값이 gzip이 아니어도 경고와 함께 새로 부팅한다',
+    async () => {
+      const paint = readElf('paint.elf');
+      const store = createMemoryStore();
+      const { imageHash } = await newSession(store).session.boot(paint);
+      await store.put(imageHash, Uint8Array.of(1, 2, 3, 4));
+
+      const { session, output } = newSession(store);
+      const result = await session.boot(paint);
+      expect(result.restored).toBe(false);
+      expect(result.warning).toBeDefined();
+      expect(warn).toHaveBeenCalledOnce();
       runUntilOutput(session, output);
     },
     SLOW_TEST_MS,

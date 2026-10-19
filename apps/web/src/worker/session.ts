@@ -10,7 +10,8 @@ export type SessionDeps = {
   onUartTransmit: (byte: number) => void;
 };
 
-export type BootResult = { restored: boolean; imageHash: string };
+// warning은 저장된 스냅샷이 있었지만 복원하지 못했을 때만 있다(스냅샷이 없으면 없다).
+export type BootResult = { restored: boolean; imageHash: string; warning?: string };
 
 export type Session = {
   readonly machine: Machine; // boot와 reset이 새 머신으로 바꾸므로 쓸 때마다 읽는다
@@ -41,24 +42,30 @@ export const createSession = ({ store, clock, onUartTransmit }: SessionDeps): Se
     machine.loadElf(program);
   };
 
-  const restore = async (): Promise<boolean> => {
+  // 저장된 스냅샷이 없는 것은 정상이고, 있는데 못 쓰는 것은 warning으로 알린다.
+  const attemptRestore = async (): Promise<{ restored: boolean; warning?: string }> => {
     const { imageHash } = requireLoaded();
     try {
       const stored = await store.get(imageHash);
-      if (stored === undefined) return false;
+      if (stored === undefined) return { restored: false };
       restoreSnapshot(machine, await gunzip(stored), imageHash);
-      return true;
-    } catch {
-      // 읽기 실패·손상·다른 프로그램의 스냅샷 모두 새로 부팅하면 되고, 복원 실패는 머신을 건드리지 않는다.
-      return false;
+      return { restored: true };
+    } catch (error: unknown) {
+      // 복원 실패는 머신을 건드리지 않으므로 새로 부팅한 상태로 이어 간다.
+      const reason = error instanceof Error ? error.message : String(error);
+      const warning = `저장된 스냅샷을 복원하지 못해 새로 부팅했다: ${reason}`;
+      console.warn(warning, error);
+      return { restored: false, warning };
     }
   };
+
+  const restore = async (): Promise<boolean> => (await attemptRestore()).restored;
 
   const boot = async (program: Uint8Array): Promise<BootResult> => {
     const imageHash = await sha256Hex(program);
     loaded = { program, imageHash };
     startFresh(program);
-    return { restored: await restore(), imageHash };
+    return { ...(await attemptRestore()), imageHash };
   };
 
   const save = async (): Promise<{ imageHash: string; bytes: number }> => {
@@ -72,8 +79,9 @@ export const createSession = ({ store, clock, onUartTransmit }: SessionDeps): Se
     const { program, imageHash } = requireLoaded();
     try {
       await store.delete(imageHash);
-    } catch {
-      // 못 지워도 새로 부팅한다. 남은 스냅샷은 다음 save가 덮어쓴다.
+    } catch (error: unknown) {
+      // 못 지워도 새로 부팅한다. 남은 스냅샷은 다음 save가 덮어쓰고, 그 전에 새로고침하면 복원된다.
+      console.warn('스냅샷을 지우지 못했다', error);
     }
     startFresh(program);
   };

@@ -82,6 +82,13 @@ const wake = (): void => {
   queueSlice();
 };
 
+// 예외로 멈춘 루프는 idleTimer도 sliceQueued도 없는 상태라 wake가 깨우지 못한다. start·reset은 무조건 다시 건다.
+const restartLoop = (): void => {
+  clearTimeout(idleTimer);
+  idleTimer = undefined;
+  queueSlice();
+};
+
 const runSlice = (): void => {
   if (runtime === undefined) return;
   try {
@@ -128,11 +135,11 @@ const start = async (program: ProgramName, canvas: OffscreenCanvas): Promise<voi
       pendingOutput.push(byte);
     },
   });
-  const { restored } = await session.boot(new Uint8Array(await response.arrayBuffer()));
+  const { restored, warning } = await session.boot(new Uint8Array(await response.arrayBuffer()));
   session.machine.framebuffer.dirty = true; // 게스트가 화면을 쓰지 않아도 첫 화면을 그린다
   runtime = { session, context, image: new ImageData(FB_WIDTH, FB_HEIGHT) };
-  post({ type: 'booted', restored });
-  queueSlice();
+  post({ type: 'booted', restored, warning });
+  restartLoop();
 };
 
 const save = async (): Promise<void> => {
@@ -146,7 +153,7 @@ const reset = async (): Promise<void> => {
   await runtime.session.reset();
   runtime.session.machine.framebuffer.dirty = true;
   post({ type: 'booted', restored: false });
-  wake();
+  restartLoop();
 };
 
 self.onmessage = (event: MessageEvent<MainToWorker>) => {
