@@ -6,8 +6,9 @@ import { PRIVILEGE } from '../src/cpu/cpu';
 import { saveCpuState } from '../src/cpu/cpuState';
 import { CSR, MIP_MEIP, MIP_MSIP, MSTATUS_MIE, MSTATUS_MPIE, MSTATUS_MPP } from '../src/cpu/csr';
 import { createMachine, type Machine } from '../src/machine';
-import { CLINT_BASE, FB_STRIDE, UART_BASE } from '../src/memoryMap';
+import { CLINT_BASE, FB_HEIGHT, FB_STRIDE, RAM_SIZE, UART_BASE } from '../src/memoryMap';
 import {
+  describeSnapshot,
   readSnapshotMeta,
   restoreSnapshot,
   serializeSnapshot,
@@ -407,6 +408,32 @@ describe('스냅샷 메타', () => {
     );
     expect(readSnapshotMeta(bytes).emulatorVersion).toBe('9.9.9');
     restoreSnapshot(createGuest(undefined, MIB).machine, bytes, 'h1');
+  });
+});
+
+describe('스냅샷 구간', () => {
+  it('describeSnapshot은 메타와 구간 크기를 돌려준다', () => {
+    const bytes = serializeSnapshot(createGuest(undefined).machine, 'h1');
+    const { meta, sections } = describeSnapshot(bytes);
+    expect(meta).toEqual(readSnapshotMeta(bytes));
+    expect(sections.map((section) => section.name)).toEqual([
+      'header',
+      'info',
+      'ram',
+      'framebuffer',
+    ]);
+    const bytesOf = (name: string) => sections.find((section) => section.name === name)?.bytes;
+    expect(bytesOf('header')).toBe(HEADER_BYTES);
+    expect(bytesOf('info')).toBe(new DataView(bytes.buffer).getUint32(8, true));
+    expect(bytesOf('ram')).toBe(RAM_SIZE);
+    expect(bytesOf('framebuffer')).toBe(FB_STRIDE * FB_HEIGHT);
+  });
+
+  it('describeSnapshot은 망가진 입력을 SnapshotMismatchError로 거부한다', () => {
+    const bytes = serializeSnapshot(createGuest(undefined, MIB).machine, 'h1');
+    expect(reasonOf(() => describeSnapshot(Uint8Array.of(1, 2, 3, 4)))).toBe('magic');
+    expect(reasonOf(() => describeSnapshot(bytes.subarray(0, HEADER_BYTES + 8)))).toBe('corrupt');
+    expect(reasonOf(() => describeSnapshot(bytes.subarray(0, bytes.length - 8)))).toBe('corrupt');
   });
 });
 

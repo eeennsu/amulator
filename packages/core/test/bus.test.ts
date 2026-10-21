@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { BusFault, createBus, type AccessWidth, type Device } from '../src/bus';
+import { BusFault, createBus, type AccessWidth, type Device, type DeviceAccess } from '../src/bus';
 import { RAM_BASE } from '../src/memoryMap';
 
 const RAM_BYTES = 0x1000;
@@ -107,6 +107,43 @@ describe('bus 장치', () => {
     expect(catchFault(() => bus.read(DEVICE_BASE + DEVICE_SIZE, 1)).address).toBe(
       DEVICE_BASE + DEVICE_SIZE,
     );
+  });
+});
+
+describe('bus 장치 접근 기록', () => {
+  it('장치 접근을 듣는 함수가 있으면 읽기와 쓰기를 알린다', () => {
+    const { device } = makeDevice(0xabcd);
+    const bus = makeBus([device]);
+    const seen: DeviceAccess[] = [];
+    bus.setDeviceAccessListener((access) => seen.push(access));
+    bus.write(DEVICE_BASE + 8, 1, 0x1ff);
+    bus.read(DEVICE_BASE + 4, 2);
+    expect(seen).toEqual([
+      { device: 'fake', address: DEVICE_BASE + 8, width: 1, kind: 'write', value: 0xff },
+      { device: 'fake', address: DEVICE_BASE + 4, width: 2, kind: 'read', value: 0xabcd },
+    ]);
+  });
+
+  it('RAM 접근은 알리지 않는다', () => {
+    const bus = makeBus();
+    const seen: DeviceAccess[] = [];
+    bus.setDeviceAccessListener((access) => seen.push(access));
+    bus.write(RAM_BASE, 4, 1);
+    bus.read(RAM_BASE, 4);
+    bus.fetch(RAM_BASE);
+    expect(seen).toEqual([]);
+  });
+
+  it('듣는 함수를 지우면 더 알리지 않는다', () => {
+    const { device } = makeDevice();
+    const bus = makeBus([device]);
+    const seen: DeviceAccess[] = [];
+    bus.setDeviceAccessListener((access) => seen.push(access));
+    bus.read(DEVICE_BASE, 4);
+    bus.setDeviceAccessListener(undefined);
+    bus.read(DEVICE_BASE, 4);
+    bus.write(DEVICE_BASE, 4, 1);
+    expect(seen).toHaveLength(1);
   });
 });
 

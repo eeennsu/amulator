@@ -8,6 +8,7 @@
   },
   "scripts": {
     "test": "vitest run",
+    "bench": "vitest bench --run --reporter=verbose",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p test/tsconfig.json"
   },
   "devDependencies": {

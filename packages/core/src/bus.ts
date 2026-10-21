@@ -22,11 +22,21 @@ export class BusFault extends Error {
   }
 }
 
+// value는 장치가 받은(쓰기, 폭만큼 자른 값) 또는 돌려준(읽기) 부호 없는 값이다.
+export type DeviceAccess = {
+  device: string;
+  address: number;
+  width: AccessWidth;
+  kind: 'read' | 'write';
+  value: number;
+};
+
 export type Bus = {
   readonly ram: Uint8Array;
   read: (address: number, width: AccessWidth) => number; // 부호 없는 값(>>> 0)
   write: (address: number, width: AccessWidth, value: number) => void;
   fetch: (address: number) => number;
+  setDeviceAccessListener: (listener: ((access: DeviceAccess) => void) | undefined) => void;
 };
 
 const FETCH_WIDTH = 4;
@@ -37,6 +47,8 @@ const truncate = (value: number, width: AccessWidth): number =>
 
 export const createBus = (ram: Uint8Array, devices: readonly Device[]): Bus => {
   const view = new DataView(ram.buffer, ram.byteOffset, ram.byteLength);
+  // 장치 경로에서만 검사한다. RAM과 fetch 경로는 이 변수를 읽지 않는다.
+  let deviceAccessListener: ((access: DeviceAccess) => void) | undefined;
 
   const ramOffset = (address: number, width: AccessWidth): number | undefined => {
     const offset = address - RAM_BASE;
@@ -61,7 +73,11 @@ export const createBus = (ram: Uint8Array, devices: readonly Device[]): Bus => {
     }
     const device = deviceAt(address, width);
     if (device === undefined) throw new BusFault(address, 'read');
-    return device.read(address - device.base, width) >>> 0;
+    const value = device.read(address - device.base, width) >>> 0;
+    if (deviceAccessListener !== undefined) {
+      deviceAccessListener({ device: device.name, address, width, kind: 'read', value });
+    }
+    return value;
   };
 
   const write = (rawAddress: number, width: AccessWidth, value: number): void => {
@@ -75,7 +91,17 @@ export const createBus = (ram: Uint8Array, devices: readonly Device[]): Bus => {
     }
     const device = deviceAt(address, width);
     if (device === undefined) throw new BusFault(address, 'write');
-    device.write(address - device.base, width, truncate(value, width));
+    const truncated = truncate(value, width);
+    device.write(address - device.base, width, truncated);
+    if (deviceAccessListener !== undefined) {
+      deviceAccessListener({
+        device: device.name,
+        address,
+        width,
+        kind: 'write',
+        value: truncated,
+      });
+    }
   };
 
   // 명령어는 RAM에서만 가져온다. 장치 읽기는 부작용이 있다(UART FIFO 소비 등).
@@ -86,5 +112,11 @@ export const createBus = (ram: Uint8Array, devices: readonly Device[]): Bus => {
     return view.getUint32(offset, true);
   };
 
-  return { ram, read, write, fetch };
+  const setDeviceAccessListener = (
+    listener: ((access: DeviceAccess) => void) | undefined,
+  ): void => {
+    deviceAccessListener = listener;
+  };
+
+  return { ram, read, write, fetch, setDeviceAccessListener };
 };

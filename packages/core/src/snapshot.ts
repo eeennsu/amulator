@@ -18,6 +18,8 @@ const INFO_LENGTH_OFFSET = 8;
 const HEADER_BYTES = 12;
 const WORD_BYTES = 4;
 const ASCII_LIMIT = 0x80;
+const SECTION_HEADER = 'header';
+const SECTION_INFO = 'info';
 const BUFFER_RAM = 'ram';
 const BUFFER_FRAMEBUFFER = 'framebuffer';
 
@@ -92,7 +94,7 @@ const decodeInfo = (bytes: Uint8Array): string => {
   return text;
 };
 
-type ParsedSnapshot = { info: SnapshotInfo; binaryStart: number };
+type ParsedSnapshot = { info: SnapshotInfo; infoLength: number; binaryStart: number };
 
 // 머신을 건드리지 않는 검사: magic, 포맷 버전, info의 모양.
 const parseSnapshot = (bytes: Uint8Array): ParsedSnapshot => {
@@ -115,7 +117,7 @@ const parseSnapshot = (bytes: Uint8Array): ParsedSnapshot => {
   }
   const parsed = infoSchema.safeParse(json);
   if (!parsed.success) throw new SnapshotMismatchError('corrupt');
-  return { info: parsed.data, binaryStart: align4(infoEnd) };
+  return { info: parsed.data, infoLength: infoEnd - HEADER_BYTES, binaryStart: align4(infoEnd) };
 };
 
 export const serializeSnapshot = (machine: Machine, imageHash: string): Uint8Array => {
@@ -148,14 +150,36 @@ export const serializeSnapshot = (machine: Machine, imageHash: string): Uint8Arr
   return out;
 };
 
-export const readSnapshotMeta = (bytes: Uint8Array): SnapshotMeta => {
-  const { info } = parseSnapshot(bytes);
+const metaOf = (info: SnapshotInfo): SnapshotMeta => ({
+  formatVersion: SNAPSHOT_FORMAT_VERSION,
+  emulatorVersion: info.emulatorVersion,
+  config: info.config,
+  imageHash: info.imageHash,
+  createdAt: info.createdAt,
+});
+
+export const readSnapshotMeta = (bytes: Uint8Array): SnapshotMeta =>
+  metaOf(parseSnapshot(bytes).info);
+
+export type SnapshotSection = { name: string; bytes: number };
+
+// info는 JSON 길이만 센다. 뒤의 정렬 패딩(최대 3바이트)은 어느 구간에도 넣지 않는다.
+export const describeSnapshot = (
+  bytes: Uint8Array,
+): { meta: SnapshotMeta; sections: SnapshotSection[] } => {
+  const { info, infoLength, binaryStart } = parseSnapshot(bytes);
+  for (const buffer of info.buffers) {
+    if (binaryStart + buffer.offset + buffer.length > bytes.length) {
+      throw new SnapshotMismatchError('corrupt');
+    }
+  }
   return {
-    formatVersion: SNAPSHOT_FORMAT_VERSION,
-    emulatorVersion: info.emulatorVersion,
-    config: info.config,
-    imageHash: info.imageHash,
-    createdAt: info.createdAt,
+    meta: metaOf(info),
+    sections: [
+      { name: SECTION_HEADER, bytes: HEADER_BYTES },
+      { name: SECTION_INFO, bytes: infoLength },
+      ...info.buffers.map(({ name, length }) => ({ name, bytes: length })),
+    ],
   };
 };
 
