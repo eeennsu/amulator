@@ -91,6 +91,16 @@ describe('session', () => {
   );
 
   it(
+    'boot는 실은 ELF 이미지를 돌려준다',
+    async () => {
+      const { session } = newSession(createMemoryStore());
+      const { image } = await session.boot(readElf('paint.elf'));
+      expect(image.entry).toBe(0x8000_0000);
+    },
+    SLOW_TEST_MS,
+  );
+
+  it(
     '저장한 스냅샷을 새 세션이 복원한다',
     async () => {
       const store = createMemoryStore();

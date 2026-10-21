@@ -1,15 +1,20 @@
 import { dragEvents, tapEvents } from '@amulator/core/control/gestures';
 import { BRIDGE_ERROR_CODE, type BridgeRequest } from '@amulator/core/control/protocol';
 import type { TouchSample } from '@amulator/core/devices/touch';
+import type { ElfImage } from '@amulator/core/elf';
+import { inspectCpu, memoryRegions, peekMemory, summarizeElf } from '@amulator/core/inspect';
 import type { Machine } from '@amulator/core/machine';
 import { FB_HEIGHT, FB_WIDTH } from '@amulator/core/memoryMap';
+import { describeSnapshot, serializeSnapshot } from '@amulator/core/snapshot';
 
-import type { MainToWorker, WorkerToMain } from '../messages';
+import type { Gesture, MachineView, MainToWorker, RegisterTarget, WorkerToMain } from '../messages';
 import { PROGRAMS, type ProgramName } from '../programs';
+import { gzip } from './compression';
 import { createHttpSnapshotStore } from './httpSnapshotStore';
 import { createSession, type Session } from './session';
 import { createIndexedDbSnapshotStore } from './snapshotStore';
 import { createTouchFeeder, type TouchSink } from './touchFeeder';
+import { createTraceBuffer, TRACE_CAPACITY } from './traceBuffer';
 
 // 한 구간이 메인 스레드 메시지(터치, 저장)를 막는 시간의 상한이다.
 const SLICE_MS = 12;
@@ -20,8 +25,15 @@ const MS_PER_SECOND = 1_000;
 const STATUS_INTERVAL_MS = MS_PER_SECOND;
 const MICROS_PER_MS = 1_000;
 const TOUCH_TIMEOUT_MS = 2_000;
+const STEP_MAX = 10_000;
 
-type Runtime = { session: Session; context: OffscreenCanvasRenderingContext2D; image: ImageData };
+type Runtime = {
+  session: Session;
+  context: OffscreenCanvasRenderingContext2D;
+  image: ImageData;
+  elf: ElfImage;
+  imageHash: string;
+};
 
 // 브리지의 tap·drag 응답은 게스트가 그 샘플을 모두 꺼낸 뒤에 보낸다.
 type TouchWaiter = {
@@ -32,7 +44,7 @@ type TouchWaiter = {
 };
 
 const post = (message: WorkerToMain, transfer: Transferable[] = []): void =>
-  self.postMessage(message, transfer);
+  self.postMessage(message, { transfer });
 
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
@@ -47,6 +59,8 @@ let idleTimer: ReturnType<typeof setTimeout> | undefined;
 let tasks: Promise<void> = Promise.resolve();
 const touchFeeder = createTouchFeeder();
 let touchWaiters: TouchWaiter[] = [];
+let traceEnabled = false;
+const traceBuffer = createTraceBuffer(TRACE_CAPACITY);
 
 // save·reset·start는 서로 끼어들지 않게 한 줄로 세운다(reset 직후에 이전 save의 put이 끝나면 스냅샷이 되살아난다).
 const enqueue = (task: () => Promise<void>): void => {
@@ -59,6 +73,16 @@ const flushOutput = (): void => {
   if (pendingOutput.length === 0) return;
   post({ type: 'uartOutput', bytes: Uint8Array.from(pendingOutput) });
   pendingOutput = [];
+};
+
+// 머신이 바뀔 때마다 새 버스에 다시 건다. 끄면 듣는 함수를 뗀다.
+const attachTrace = (): void => {
+  runtime?.session.machine.bus.setDeviceAccessListener(traceEnabled ? traceBuffer.push : undefined);
+};
+
+const flushTrace = (): void => {
+  const { accesses, dropped } = traceBuffer.drain();
+  if (accesses.length > 0) post({ type: 'deviceAccesses', accesses, dropped });
 };
 
 const draw = ({ session, context, image }: Runtime): void => {
@@ -168,6 +192,7 @@ const runSlice = (): void => {
     settleTouch(machine.touch);
     draw(runtime);
     flushOutput();
+    flushTrace();
     reportStatus(performance.now());
     if (hasWork()) {
       queueSlice();
@@ -180,6 +205,7 @@ const runSlice = (): void => {
   } catch (error: unknown) {
     // 실행 중 예외는 머신 상태를 믿을 수 없다는 뜻이라 루프를 멈춘다.
     flushOutput();
+    flushTrace();
     post({ type: 'error', message: `실행을 멈췄다: ${messageOf(error)}` });
   }
 };
@@ -206,11 +232,20 @@ const start = async (
       pendingOutput.push(byte);
     },
   });
-  const { restored, warning } = await session.boot(new Uint8Array(await response.arrayBuffer()));
+  const { restored, warning, image, imageHash } = await session.boot(
+    new Uint8Array(await response.arrayBuffer()),
+  );
   session.machine.framebuffer.dirty = true; // 게스트가 화면을 쓰지 않아도 첫 화면을 그린다
-  runtime = { session, context, image: new ImageData(FB_WIDTH, FB_HEIGHT) };
+  runtime = { session, context, image: new ImageData(FB_WIDTH, FB_HEIGHT), elf: image, imageHash };
+  attachTrace();
   cancelTouch();
-  post({ type: 'booted', restored, warning });
+  post({
+    type: 'booted',
+    restored,
+    warning,
+    elf: summarizeElf(image),
+    regions: memoryRegions(session.machine),
+  });
   restartLoop();
 };
 
@@ -225,7 +260,13 @@ const reset = async (): Promise<void> => {
   await runtime.session.reset();
   cancelTouch();
   runtime.session.machine.framebuffer.dirty = true;
-  post({ type: 'booted', restored: false });
+  attachTrace();
+  post({
+    type: 'booted',
+    restored: false,
+    elf: summarizeElf(runtime.elf),
+    regions: memoryRegions(runtime.session.machine),
+  });
   restartLoop();
 };
 
@@ -264,6 +305,7 @@ const perform = async (
       return current.session.save();
     case 'snapshot.load': {
       const restored = await current.session.restore();
+      attachTrace();
       cancelTouch();
       current.session.machine.framebuffer.dirty = true;
       return { restored };
@@ -291,6 +333,94 @@ const serve = async (request: BridgeRequest): Promise<void> => {
   } catch (error: unknown) {
     const failure = { code: BRIDGE_ERROR_CODE.internal, message: messageOf(error) };
     post({ type: 'bridgeResponse', response: { jsonrpc: '2.0', id: request.id, error: failure } });
+  }
+};
+
+// 아직 부팅하지 않았거나 동작이 던지면 오류로 알린다. 던져도 워커는 다음 메시지에 응답한다.
+const guarded = (action: (current: Runtime) => void, id?: number): void => {
+  try {
+    if (runtime === undefined) throw new Error('아직 부팅하지 않았다');
+    action(runtime);
+  } catch (error: unknown) {
+    post({ type: 'error', message: messageOf(error), ...(id === undefined ? {} : { id }) });
+  }
+};
+
+const postState = ({ session }: Runtime): void => {
+  const view: MachineView = {
+    paused,
+    cpu: inspectCpu(session.machine.cpu),
+    touch: session.machine.touch.saveState(),
+  };
+  post({ type: 'state', state: view });
+};
+
+// 멈춘 동안의 수동 동작이 만든 화면·출력·장치 접근을 runSlice가 하듯 내보낸다.
+const publish = (current: Runtime): void => {
+  settleTouch(current.session.machine.touch);
+  draw(current);
+  flushOutput();
+  flushTrace();
+};
+
+const step = (current: Runtime, count: number): void => {
+  if (!paused) throw new Error('멈춘 상태에서만 한 단계씩 실행할 수 있다');
+  if (!Number.isInteger(count) || count < 1 || count > STEP_MAX) {
+    throw new RangeError(`단계 수는 1~${STEP_MAX} 사이의 정수여야 한다: ${count}`);
+  }
+  const { machine } = current.session;
+  touchFeeder.feed(machine.touch);
+  try {
+    machine.run(count);
+  } finally {
+    publish(current);
+  }
+  postState(current);
+};
+
+const writeRegister = ({ session }: Runtime, target: RegisterTarget, value: number): void => {
+  const { cpu } = session.machine;
+  if (target === 'pc') {
+    cpu.pc = value >>> 0;
+    cpu.idle = false;
+    wake();
+  } else if (!Number.isInteger(target) || target < 0 || target >= cpu.x.length) {
+    throw new RangeError(`레지스터 번호는 0~${cpu.x.length - 1}이어야 한다: ${target}`);
+  } else if (target !== 0) {
+    cpu.x[target] = value >>> 0;
+  }
+};
+
+const busWrite = (current: Runtime, address: number, width: number, value: number): void => {
+  if (width !== 1 && width !== 2 && width !== 4) {
+    throw new RangeError(`접근 폭은 1, 2, 4 중 하나여야 한다: ${width}`);
+  }
+  try {
+    current.session.machine.bus.write(address, width, value);
+  } finally {
+    publish(current);
+  }
+  wake(); // 장치에 쓴 값이 쉬는 게스트를 깨울 수 있다
+  postState(current);
+};
+
+const gestureSamples = (gesture: Gesture): TouchSample[] => {
+  if (gesture.kind === 'tap') return tapEvents(gesture.at);
+  if (!Number.isInteger(gesture.steps) || gesture.steps < 1) {
+    throw new RangeError(`드래그 구간 수는 1 이상의 정수여야 한다: ${gesture.steps}`);
+  }
+  return dragEvents(gesture.from, gesture.to, gesture.steps);
+};
+
+const describeCurrentSnapshot = async (id: number): Promise<void> => {
+  try {
+    if (runtime === undefined) throw new Error('아직 부팅하지 않았다');
+    const bytes = serializeSnapshot(runtime.session.machine, runtime.imageHash);
+    const { meta, sections } = describeSnapshot(bytes);
+    const compressed = await gzip(bytes);
+    post({ type: 'snapshotInfo', id, meta, sections, gzipBytes: compressed.length });
+  } catch (error: unknown) {
+    post({ type: 'error', message: messageOf(error), id });
   }
 };
 
@@ -322,5 +452,49 @@ self.onmessage = (event: MessageEvent<MainToWorker>) => {
       else enqueue(() => serve(request));
       break;
     }
+    case 'pause':
+      pause();
+      guarded(postState);
+      break;
+    case 'resume':
+      resume();
+      guarded(postState);
+      break;
+    case 'step':
+      guarded((current) => step(current, message.count));
+      break;
+    case 'inspect':
+      guarded(postState);
+      break;
+    case 'peek':
+      guarded(({ session }) => {
+        const bytes = peekMemory(session.machine, message.address, message.length);
+        const transfer = bytes.buffer instanceof ArrayBuffer ? [bytes.buffer] : [];
+        post({ type: 'memory', id: message.id, address: message.address, bytes }, transfer);
+      }, message.id);
+      break;
+    case 'setRegister':
+      guarded((current) => {
+        writeRegister(current, message.target, message.value);
+        postState(current);
+      });
+      break;
+    case 'busWrite':
+      guarded((current) => busWrite(current, message.address, message.width, message.value));
+      break;
+    case 'trace':
+      traceEnabled = message.enabled;
+      if (!traceEnabled) traceBuffer.drain(); // 끄면 모인 기록은 보내지 않고 버린다
+      attachTrace();
+      break;
+    case 'gesture':
+      guarded(() => {
+        touchFeeder.enqueue(gestureSamples(message.gesture));
+        wake();
+      });
+      break;
+    case 'describeSnapshot':
+      enqueue(() => describeCurrentSnapshot(message.id));
+      break;
   }
 };

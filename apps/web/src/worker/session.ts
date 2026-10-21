@@ -1,3 +1,4 @@
+import type { ElfImage } from '@amulator/core/elf';
 import { createMachine, type Clock, type Machine } from '@amulator/core/machine';
 import { restoreSnapshot, serializeSnapshot } from '@amulator/core/snapshot';
 
@@ -11,7 +12,12 @@ export type SessionDeps = {
 };
 
 // warning은 저장된 스냅샷이 있었지만 복원하지 못했을 때만 있다(스냅샷이 없으면 없다).
-export type BootResult = { restored: boolean; imageHash: string; warning?: string };
+export type BootResult = {
+  restored: boolean;
+  imageHash: string;
+  image: ElfImage;
+  warning?: string;
+};
 
 export type Session = {
   readonly machine: Machine; // boot와 reset이 새 머신으로 바꾸므로 쓸 때마다 읽는다
@@ -37,9 +43,9 @@ export const createSession = ({ store, clock, onUartTransmit }: SessionDeps): Se
   };
 
   // CPU·CSR·장치 상태를 되돌리는 방법이 새 머신뿐이라 reset도 머신을 새로 만든다.
-  const startFresh = (program: Uint8Array): void => {
+  const startFresh = (program: Uint8Array): ElfImage => {
     machine = createMachine({ clock, onUartTransmit });
-    machine.loadElf(program);
+    return machine.loadElf(program);
   };
 
   // 복원 실패는 머신을 건드리지 않으므로 새로 부팅한 상태로 이어 간다.
@@ -76,8 +82,8 @@ export const createSession = ({ store, clock, onUartTransmit }: SessionDeps): Se
   const boot = async (program: Uint8Array): Promise<BootResult> => {
     const imageHash = await sha256Hex(program);
     loaded = { program, imageHash };
-    startFresh(program);
-    return { ...(await attemptRestore()), imageHash };
+    const image = startFresh(program);
+    return { ...(await attemptRestore()), imageHash, image };
   };
 
   const save = async (): Promise<{ imageHash: string; bytes: number }> => {
