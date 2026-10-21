@@ -5,6 +5,7 @@ import '@xterm/xterm/css/xterm.css';
 export type UartTerminal = {
   write: (bytes: Uint8Array) => void;
   clear: () => void;
+  dispose: () => void;
 };
 
 const COLS = 60;
@@ -22,5 +23,6 @@ export const createTerminal = (
   return {
     write: (bytes) => terminal.write(bytes),
     clear: () => terminal.reset(),
+    dispose: () => terminal.dispose(),
   };
 };

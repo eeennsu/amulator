@@ -46,7 +46,18 @@ try {
   check(!opened.isError && first?.type === 'text', 'emulator_open did not return text');
   const response = await fetch(first.text, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
   check(response.status === 200, `GET ${first.text} returned ${response.status}`);
-  check((await response.text()).includes('<canvas'), 'the page has no <canvas');
+  const html = await response.text();
+  check(html.includes('id="root"'), 'the page has no id="root"');
+
+  // The page is a React entry: its module script must be served as JavaScript by the same server.
+  const src = /<script[^>]*type="module"[^>]*src="([^"]+)"/.exec(html)?.[1];
+  check(src !== undefined, 'the page has no <script type="module" src>');
+  const script = await fetch(new URL(src, first.text), {
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+  check(script.status === 200, `GET ${src} returned ${script.status}`);
+  const scriptType = script.headers.get('content-type') ?? '';
+  check(scriptType.includes('javascript'), `${src} has content-type "${scriptType}"`);
 
   process.stdout.write('smoke ok\n');
 } catch (error) {

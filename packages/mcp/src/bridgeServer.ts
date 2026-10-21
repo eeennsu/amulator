@@ -441,7 +441,7 @@ export const startBridgeServer = async (options: {
   return {
     port,
     token,
-    pageUrl: (program) => `http://${HOST}:${port}/?program=${program}&token=${token}`,
+    pageUrl: (program) => `http://${HOST}:${port}/emulator.html?program=${program}&token=${token}`,
     isConnected: () => active !== undefined,
     request: async (method, params, timeoutMs = BRIDGE_TIMEOUT_MS) =>
       send(await waitForConnection(), method, params, timeoutMs),

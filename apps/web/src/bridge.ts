@@ -8,6 +8,7 @@ import { FB_HEIGHT, FB_WIDTH } from '@amulator/core/memoryMap';
 export type Bridge = {
   respond: (response: BridgeResponse) => void;
   respondScreenshot: (id: number, png: ArrayBuffer) => void;
+  close: () => void;
 };
 
 // String.fromCharCode의 인자 수 한도를 넘지 않도록 나눠서 변환한다.
@@ -51,5 +52,6 @@ export const connectBridge = (
         id,
         result: { pngBase64: toBase64(new Uint8Array(png)), width: FB_WIDTH, height: FB_HEIGHT },
       }),
+    close: () => socket.close(),
   };
 };

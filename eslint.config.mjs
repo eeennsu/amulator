@@ -1,5 +1,6 @@
 import js from '@eslint/js';
 import prettier from 'eslint-config-prettier';
+import reactHooks from 'eslint-plugin-react-hooks';
 import { defineConfig } from 'eslint/config';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
@@ -117,11 +118,12 @@ const local = {
   },
 };
 
-// 모노레포라 FSD 경계(boundaries)와 react-hooks는 뺐다.
+// 모노레포라 FSD 경계(boundaries)는 뺐다.
 export default defineConfig(
   { ignores: GENERATED },
   js.configs.recommended,
   tseslint.configs.recommendedTypeChecked,
+  reactHooks.configs.flat.recommended,
   {
     languageOptions: {
       parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },

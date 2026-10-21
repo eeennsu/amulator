@@ -4,39 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>amulator</title>
-    <style>
-      body {
-        margin: 16px;
-        font-family: system-ui, sans-serif;
-      }
-      .toolbar {
-        display: flex;
-        gap: 8px;
-        align-items: center;
-        margin-bottom: 8px;
-      }
-      #screen {
-        display: block;
-        width: 320px;
-        height: 480px;
-        /* outline, not border: the pointer mapping needs the rect to equal the 320x480 canvas */
-        outline: 1px solid #888;
-        touch-action: none;
-      }
-      #terminal {
-        margin-top: 8px;
-        width: fit-content;
-      }
-    </style>
   </head>
   <body>
-    <div class="toolbar">
-      <button id="save" type="button">Save</button>
-      <button id="reset" type="button">Reset</button>
-      <span id="status"></span>
-    </div>
-    <canvas id="screen" width="320" height="480"></canvas>
-    <div id="terminal"></div>
-    <script type="module" src="/src/main.ts"></script>
+    <div id="root"></div>
+    <script type="module" src="/src/site/main.tsx"></script>
   </body>
 </html>

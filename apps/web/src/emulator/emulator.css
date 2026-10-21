@@ -1,0 +1,22 @@
+body {
+  margin: 16px;
+  font-family: system-ui, sans-serif;
+}
+.toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+#screen {
+  display: block;
+  width: 320px;
+  height: 480px;
+  /* outline, not border: the pointer mapping needs the rect to equal the 320x480 canvas */
+  outline: 1px solid #888;
+  touch-action: none;
+}
+#terminal {
+  margin-top: 8px;
+  width: fit-content;
+}

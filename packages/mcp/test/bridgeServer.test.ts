@@ -291,7 +291,7 @@ describe('startBridgeServer', () => {
   it('builds the page url with the program and token', async () => {
     const server = await start();
     expect(server.pageUrl('clock')).toBe(
-      `http://127.0.0.1:${server.port}/?program=clock&token=${server.token}`,
+      `http://127.0.0.1:${server.port}/emulator.html?program=clock&token=${server.token}`,
     );
   });
 });
