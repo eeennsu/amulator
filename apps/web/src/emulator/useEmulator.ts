@@ -44,6 +44,9 @@ const reduce = (view: View, message: WorkerToMain): View => {
         note: message.warning ?? (message.restored ? '스냅샷에서 복원했다' : '새로 부팅했다'),
         elf: message.elf,
         regions: message.regions,
+        // reset 뒤에는 이전 머신의 상태와 기록이 남지 않게 한다.
+        state: undefined,
+        accesses: [],
       };
     case 'saved':
       return { ...view, note: `저장했다 (${message.bytes} B)` };

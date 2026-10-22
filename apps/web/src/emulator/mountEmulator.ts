@@ -10,6 +10,7 @@ import { createRequestTable } from './requests';
 const SCREEN_ID = 'screen';
 const SCREEN_WIDTH = 320;
 const SCREEN_HEIGHT = 480;
+const CLOSED_MESSAGE = '에뮬레이터가 닫혔다';
 
 type Slots = { screen: HTMLElement; terminal: HTMLElement };
 
@@ -150,6 +151,7 @@ export const mountEmulator = (slots: Slots, options: Options): EmulatorControlle
   return {
     send,
     peek: async (address, length) => {
+      if (disposed) throw new Error(CLOSED_MESSAGE);
       const { id, promise } = requests.open();
       send({ type: 'peek', id, address, length });
       const reply = await promise;
@@ -157,6 +159,7 @@ export const mountEmulator = (slots: Slots, options: Options): EmulatorControlle
       return reply.bytes;
     },
     describeSnapshot: async () => {
+      if (disposed) throw new Error(CLOSED_MESSAGE);
       const { id, promise } = requests.open();
       send({ type: 'describeSnapshot', id });
       const reply = await promise;
@@ -172,7 +175,7 @@ export const mountEmulator = (slots: Slots, options: Options): EmulatorControlle
       canvas.remove();
       terminal.dispose();
       bridge?.close();
-      requests.rejectAll(new Error('에뮬레이터가 닫혔다'));
+      requests.rejectAll(new Error(CLOSED_MESSAGE));
     },
   };
 };

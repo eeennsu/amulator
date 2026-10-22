@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 import { dragEvents, tapEvents } from '@amulator/core/control/gestures';
 import { BRIDGE_ERROR_CODE, type BridgeRequest } from '@amulator/core/control/protocol';
 import type { TouchSample } from '@amulator/core/devices/touch';
@@ -9,6 +11,7 @@ import { describeSnapshot, serializeSnapshot } from '@amulator/core/snapshot';
 
 import type { Gesture, MachineView, MainToWorker, RegisterTarget, WorkerToMain } from '../messages';
 import { PROGRAMS, type ProgramName } from '../programs';
+import { gestureSchema } from '../replay';
 import { gzip } from './compression';
 import { createHttpSnapshotStore } from './httpSnapshotStore';
 import { createSession, type Session } from './session';
@@ -404,12 +407,12 @@ const busWrite = (current: Runtime, address: number, width: number, value: numbe
   postState(current);
 };
 
+// 기록 재생과 같은 스키마로 검사한다. steps 상한이 없으면 큰 값이 배열을 크게 만든다.
 const gestureSamples = (gesture: Gesture): TouchSample[] => {
-  if (gesture.kind === 'tap') return tapEvents(gesture.at);
-  if (!Number.isInteger(gesture.steps) || gesture.steps < 1) {
-    throw new RangeError(`드래그 구간 수는 1 이상의 정수여야 한다: ${gesture.steps}`);
-  }
-  return dragEvents(gesture.from, gesture.to, gesture.steps);
+  const parsed = gestureSchema.safeParse(gesture);
+  if (!parsed.success) throw new RangeError(z.prettifyError(parsed.error));
+  const { data } = parsed;
+  return data.kind === 'tap' ? tapEvents(data.at) : dragEvents(data.from, data.to, data.steps);
 };
 
 const describeCurrentSnapshot = async (id: number): Promise<void> => {
@@ -452,13 +455,14 @@ self.onmessage = (event: MessageEvent<MainToWorker>) => {
       else enqueue(() => serve(request));
       break;
     }
+    // 부팅 전에는 트레이스처럼 조용히 받는다. paused는 남아서 이어서 부팅한 머신이 멈춘 채 시작한다.
     case 'pause':
       pause();
-      guarded(postState);
+      if (runtime !== undefined) postState(runtime);
       break;
     case 'resume':
       resume();
-      guarded(postState);
+      if (runtime !== undefined) postState(runtime);
       break;
     case 'step':
       guarded((current) => step(current, message.count));
@@ -469,6 +473,7 @@ self.onmessage = (event: MessageEvent<MainToWorker>) => {
     case 'peek':
       guarded(({ session }) => {
         const bytes = peekMemory(session.machine, message.address, message.length);
+        // peekMemory가 slice로 복사한 버퍼여야 한다. RAM의 뷰를 넘기면 머신 메모리가 detach된다.
         const transfer = bytes.buffer instanceof ArrayBuffer ? [bytes.buffer] : [];
         post({ type: 'memory', id: message.id, address: message.address, bytes }, transfer);
       }, message.id);

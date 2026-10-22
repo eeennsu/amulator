@@ -4,7 +4,7 @@ import { DRAG_STEPS_MAX, pointSchema } from '@amulator/core/control/protocol';
 
 import type { Gesture } from './messages';
 
-const gestureSchema = z.discriminatedUnion('kind', [
+export const gestureSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('tap'), at: pointSchema }),
   z.object({
     kind: z.literal('drag'),
