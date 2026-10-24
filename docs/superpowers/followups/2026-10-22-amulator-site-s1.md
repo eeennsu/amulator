@@ -16,6 +16,8 @@
 - reset 뒤에는 `booted`를 기다린 다음 inspect한다. 이 계약을 `messages.ts`에 적는다.
 - 인스턴스마다 64 MiB RAM과 worker가 따로 든다. 챕터 페이지의 인스턴스 수를 정할 때 함께 본다.
 - 기록 형식의 `atMs` 상한(`setTimeout` 2^31-1). 7장 기록 도구를 만들 때 더한다.
+- DS Tabs는 숨은 패널을 마운트하지 않는다(R27). 에뮬레이터 화면을 Tabs 패널 안에 두면 탭을 바꿀 때마다 다시 마운트되므로(OffscreenCanvas는 한 번만 넘긴다), 에뮬레이터 화면은 Tabs 밖에 두고 보기만 탭으로 바꾼다.
+- design-flow 훅은 세션 폴더에서 처음 만나는 `package.json`만 본다(2026-10-24 확인). 설계 6장의 모노레포 대응이 들어가기 전에는 DS 의존성이 있는 `apps/web`에서 세션을 열어야 design-flow가 켜진다.
 
 ## S3 공개 전에 확인할 것
 
