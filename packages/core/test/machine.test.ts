@@ -89,6 +89,31 @@ describe('clock.elf', () => {
   });
 });
 
+describe('run의 breakAt', () => {
+  it('breakAt에 오면 그 명령을 실행하기 전에 멈춘다', () => {
+    const { machine } = setup('clock.elf');
+    // 0x80000000 auipc sp, 0x80000004 addi sp → 0x80000008에서 멈춘다
+    const result = machine.run(1_000, 0x8000_0008);
+    expect(result).toEqual({ executed: 2, idle: false, hitBreak: true });
+    expect(machine.cpu.pc).toBe(0x8000_0008);
+  });
+
+  it('pc가 이미 breakAt이면 0개를 실행하고 멈춘다', () => {
+    const { machine, elf } = setup('clock.elf');
+    expect(machine.run(1_000, elf.entry)).toEqual({ executed: 0, idle: false, hitBreak: true });
+  });
+
+  it('breakAt이 없으면 hitBreak는 false다', () => {
+    const { machine } = setup('clock.elf');
+    expect(machine.run(10).hitBreak).toBe(false);
+  });
+
+  it('닿지 못하면 예산까지 실행하고 hitBreak는 false다', () => {
+    const { machine } = setup('clock.elf');
+    expect(machine.run(2, 0x8000_0008)).toEqual({ executed: 2, idle: false, hitBreak: false });
+  });
+});
+
 describe('nextTimerDeadlineMicros', () => {
   it('mtimecmp가 꺼져 있으면 null이다', () => {
     const { machine } = setup('hello.elf');

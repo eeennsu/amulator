@@ -16,7 +16,7 @@ export type MachineOptions = {
   ramSize?: number;
 };
 
-export type RunResult = { executed: number; idle: boolean };
+export type RunResult = { executed: number; idle: boolean; hitBreak: boolean };
 
 export type Machine = {
   readonly cpu: Cpu;
@@ -27,7 +27,7 @@ export type Machine = {
   readonly framebuffer: Framebuffer;
   readonly touch: TouchDevice;
   loadElf: (bytes: Uint8Array) => ElfImage; // 세그먼트 적재, pc = entry, a0 = 0, a1 = 0, M 모드
-  run: (maxInstructions: number) => RunResult;
+  run: (maxInstructions: number, breakAt?: number) => RunResult; // breakAt에 닿으면 그 명령을 실행하지 않고 멈춘다
   nextTimerDeadlineMicros: () => number | null; // mtimecmp까지 남은 µs, 꺼져 있으면 null
 };
 
@@ -77,15 +77,29 @@ export const createMachine = ({
     return true;
   };
 
-  const run = (maxInstructions: number): RunResult => {
+  // breakAt이 있는 경로. 없을 때의 루프(run)에 비교를 더하지 않으려고 따로 둔다.
+  const runUntil = (maxInstructions: number, breakAt: number): RunResult => {
     let executed = 0;
     while (executed < maxInstructions) {
       if (executed % SYNC_INTERVAL === 0) syncInterrupts();
-      if (settleIdle()) return { executed, idle: true };
+      if (settleIdle()) return { executed, idle: true, hitBreak: false };
+      if (cpu.pc === breakAt) return { executed, idle: false, hitBreak: true };
       cpu.step();
       executed += 1;
     }
-    return { executed, idle: settleIdle() };
+    return { executed, idle: settleIdle(), hitBreak: false };
+  };
+
+  const run = (maxInstructions: number, breakAt?: number): RunResult => {
+    if (breakAt !== undefined) return runUntil(maxInstructions, breakAt);
+    let executed = 0;
+    while (executed < maxInstructions) {
+      if (executed % SYNC_INTERVAL === 0) syncInterrupts();
+      if (settleIdle()) return { executed, idle: true, hitBreak: false };
+      cpu.step();
+      executed += 1;
+    }
+    return { executed, idle: settleIdle(), hitBreak: false };
   };
 
   const loadElf = (bytes: Uint8Array): ElfImage => {
