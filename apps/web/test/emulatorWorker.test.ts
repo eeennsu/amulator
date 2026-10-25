@@ -31,7 +31,18 @@ let worker: WorkerHarness | undefined;
 
 const start = async (): Promise<WorkerHarness> => {
   worker = await startWorker();
-  worker.send({ type: 'start', program: 'paint', canvas: createFakeCanvas() });
+  worker.send({ type: 'start', program: 'paint', canvas: createFakeCanvas(), persist: true });
+  await worker.waitFor('booted');
+  return worker;
+};
+
+type ClockOptions = { persist: boolean; paused: boolean };
+
+// 부팅 전 pause는 멈춘 채 시작하게 한다.
+const startClock = async ({ persist, paused }: ClockOptions): Promise<WorkerHarness> => {
+  worker = await startWorker();
+  if (paused) worker.send({ type: 'pause' });
+  worker.send({ type: 'start', program: 'clock', canvas: createFakeCanvas(), persist });
   await worker.waitFor('booted');
   return worker;
 };
@@ -158,7 +169,7 @@ describe('emulatorWorker', { timeout: SLOW_TEST_MS }, () => {
   it('부팅 전에 pause해도 오류 없이 멈춘 채 진입 주소에서 시작한다', async () => {
     worker = await startWorker();
     worker.send({ type: 'pause' });
-    worker.send({ type: 'start', program: 'paint', canvas: createFakeCanvas() });
+    worker.send({ type: 'start', program: 'paint', canvas: createFakeCanvas(), persist: true });
     await worker.waitFor('booted');
     const state = await inspect(worker);
     expect(state.paused).toBe(true);
@@ -169,7 +180,7 @@ describe('emulatorWorker', { timeout: SLOW_TEST_MS }, () => {
   it('resume하면 진입 주소에서 벗어나 달린다', async () => {
     worker = await startWorker();
     worker.send({ type: 'pause' });
-    worker.send({ type: 'start', program: 'paint', canvas: createFakeCanvas() });
+    worker.send({ type: 'start', program: 'paint', canvas: createFakeCanvas(), persist: true });
     await worker.waitFor('booted');
     expect((await control(worker, { type: 'resume' })).paused).toBe(false);
     await sleep(QUIET_MS);
@@ -213,6 +224,50 @@ describe('emulatorWorker', { timeout: SLOW_TEST_MS }, () => {
     await current.waitFor('booted');
     current.send({ type: 'gesture', gesture: { kind: 'tap', at: TAP } });
     await current.waitFor('deviceAccesses');
+  });
+
+  it('breakAt에서 멈추고 state를 보낸 뒤 꺼진다', async () => {
+    const current = await startClock({ persist: true, paused: true });
+    current.send({ type: 'breakAt', address: 0x8000_0008 });
+    current.send({ type: 'resume' });
+    const hit = await current.waitFor('state', ({ state }) => state.paused);
+    expect(hit.state.cpu.pc).toBe(0x8000_0008);
+    // 한 번 걸리면 꺼진다: 다시 계속하면 그 주소를 지나 달린다
+    await control(current, { type: 'resume' });
+    await sleep(QUIET_MS);
+    expect((await pause(current)).cpu.pc).not.toBe(0x8000_0008);
+  });
+
+  it('reset은 걸어 둔 주소를 지운다', async () => {
+    const current = await startClock({ persist: true, paused: true });
+    current.send({ type: 'breakAt', address: 0x8000_0008 });
+    current.send({ type: 'reset' });
+    await current.waitFor('booted');
+    await control(current, { type: 'resume' });
+    await sleep(QUIET_MS);
+    expect((await pause(current)).cpu.pc).not.toBe(0x8000_0008);
+  });
+
+  it('쉬는 중의 step은 pc를 그대로 두고 idle을 알린다', async () => {
+    const current = await startClock({ persist: true, paused: false });
+    await sleep(QUIET_MS); // clock은 main의 wfi에서 쉰다
+    const before = await pause(current);
+    expect(before.cpu.idle).toBe(true);
+    const after = await control(current, { type: 'step', count: 1 });
+    expect(after.cpu).toMatchObject({ pc: before.cpu.pc, idle: true });
+  });
+
+  it('persist가 false면 저장소를 읽지도 지우지도 않는다', async () => {
+    // Node에는 IndexedDB가 없어 persist: true면 booted에 warning이 실린다
+    const current = await startClock({ persist: false, paused: true });
+    const booted = current.messages.find((message) => message.type === 'booted');
+    expect(booted).toMatchObject({ restored: false, warning: undefined });
+    current.send({ type: 'reset' });
+    await current.waitFor('booted');
+    expect(console.warn).not.toHaveBeenCalledWith(
+      expect.stringContaining('스냅샷을 지우지 못했다'),
+      expect.anything(),
+    );
   });
 
   it('describeSnapshot은 구간과 압축 크기를 돌려준다', async () => {

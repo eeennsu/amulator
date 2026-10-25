@@ -4,6 +4,22 @@ export type SnapshotStore = {
   delete: (key: string) => Promise<void>;
 };
 
+// 이 인스턴스가 끝나면 사라지는 저장소다. persist: false 인스턴스가 쓴다.
+export const createMemorySnapshotStore = (): SnapshotStore => {
+  const entries = new Map<string, Uint8Array>();
+  return {
+    get: (key) => Promise.resolve(entries.get(key)),
+    put: (key, bytes) => {
+      entries.set(key, bytes);
+      return Promise.resolve();
+    },
+    delete: (key) => {
+      entries.delete(key);
+      return Promise.resolve();
+    },
+  };
+};
+
 const DB_NAME = 'amulator';
 const STORE_NAME = 'snapshots';
 const DB_VERSION = 1;

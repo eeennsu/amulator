@@ -10,7 +10,12 @@ import { mountEmulator, type EmulatorController } from './mountEmulator';
 
 const MEGA = 1_000_000;
 
-type Options = { program: ProgramName; token: string | null };
+type Options = {
+  program: ProgramName;
+  token: string | null;
+  persist: boolean;
+  startPaused: boolean;
+};
 
 type View = {
   note: string;
@@ -69,7 +74,7 @@ const renderStatus = ({ note, bridgeNote, ips }: View): string => {
   return ips > 0 ? `${label} · ${(ips / MEGA).toFixed(1)} MIPS` : label;
 };
 
-export const useEmulator = ({ program, token }: Options): Result => {
+export const useEmulator = ({ program, token, persist, startPaused }: Options): Result => {
   const screenRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<HTMLDivElement>(null);
   const [view, setView] = useState(INITIAL_VIEW);
@@ -85,6 +90,8 @@ export const useEmulator = ({ program, token }: Options): Result => {
       {
         program,
         token,
+        persist,
+        startPaused,
         onMessage: (message) => setView((view) => reduce(view, message)),
         onBridgeStatus: (text) => setView((view) => ({ ...view, bridgeNote: text })),
       },
@@ -95,7 +102,7 @@ export const useEmulator = ({ program, token }: Options): Result => {
       controller.dispose();
       setView(INITIAL_VIEW);
     };
-  }, [program, token]);
+  }, [program, token, persist, startPaused]);
 
   return {
     screenRef,

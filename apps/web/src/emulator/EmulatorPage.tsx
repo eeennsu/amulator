@@ -35,7 +35,12 @@ const Layout = ({ status, screenRef, terminalRef, onSave, onReset }: LayoutProps
 type RunningProps = { program: ProgramName; token: string | null };
 
 const RunningEmulator = ({ program, token }: RunningProps) => {
-  const { screenRef, terminalRef, status, controller } = useEmulator({ program, token });
+  const { screenRef, terminalRef, status, controller } = useEmulator({
+    program,
+    token,
+    persist: true,
+    startPaused: false,
+  });
   return (
     <Layout
       status={status}

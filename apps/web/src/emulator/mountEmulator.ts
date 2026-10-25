@@ -17,6 +17,8 @@ type Slots = { screen: HTMLElement; terminal: HTMLElement };
 type Options = {
   program: ProgramName;
   token: string | null;
+  persist: boolean;
+  startPaused: boolean;
   onMessage: (message: WorkerToMain) => void;
   onBridgeStatus: (text: string) => void;
 };
@@ -33,7 +35,7 @@ export type EmulatorController = {
 };
 
 export const mountEmulator = (slots: Slots, options: Options): EmulatorController => {
-  const { program, token } = options;
+  const { program, token, persist, startPaused } = options;
   let disposed = false;
   // 닫힌 뒤에 오는 콜백(소켓 close 등)이 다음 마운트의 상태를 덮지 않게 막는다.
   const onMessage = (message: WorkerToMain): void => {
@@ -146,7 +148,11 @@ export const mountEmulator = (slots: Slots, options: Options): EmulatorControlle
   );
 
   const offscreen = canvas.transferControlToOffscreen();
-  post({ type: 'start', program, canvas: offscreen, token: token ?? undefined }, [offscreen]);
+  // 부팅 전 pause는 멈춘 채 시작하게 한다.
+  if (startPaused) send({ type: 'pause' });
+  post({ type: 'start', program, canvas: offscreen, token: token ?? undefined, persist }, [
+    offscreen,
+  ]);
 
   return {
     send,

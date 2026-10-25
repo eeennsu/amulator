@@ -15,7 +15,11 @@ import { gestureSchema } from '../replay';
 import { gzip } from './compression';
 import { createHttpSnapshotStore } from './httpSnapshotStore';
 import { createSession, type Session } from './session';
-import { createIndexedDbSnapshotStore } from './snapshotStore';
+import {
+  createIndexedDbSnapshotStore,
+  createMemorySnapshotStore,
+  type SnapshotStore,
+} from './snapshotStore';
 import { createTouchFeeder, type TouchSink } from './touchFeeder';
 import { createTraceBuffer, TRACE_CAPACITY } from './traceBuffer';
 
@@ -58,6 +62,7 @@ let executed = 0;
 let statusSince = performance.now();
 let sliceQueued = false;
 let paused = false;
+let breakpoint: number | undefined;
 let idleTimer: ReturnType<typeof setTimeout> | undefined;
 let tasks: Promise<void> = Promise.resolve();
 const touchFeeder = createTouchFeeder();
@@ -184,19 +189,28 @@ const runSlice = (): void => {
     const { machine } = runtime.session;
     const deadline = performance.now() + SLICE_MS;
     let idle = false;
+    let hitBreak = false;
     // 게스트가 쉬어도 줄 선 터치를 넣을 자리가 있으면 바로 이어서 먹인다(자리가 없으면 쉰다).
     const hasWork = (): boolean => !idle || touchFeeder.canFeed(machine.touch);
-    while (hasWork() && performance.now() < deadline) {
+    while (!hitBreak && hasWork() && performance.now() < deadline) {
       touchFeeder.feed(machine.touch);
-      const result = machine.run(CLOCK_CHECK_INSTRUCTIONS);
+      const result = machine.run(CLOCK_CHECK_INSTRUCTIONS, breakpoint);
       executed += result.executed;
       idle = result.idle;
+      hitBreak = result.hitBreak;
     }
     settleTouch(machine.touch);
     draw(runtime);
     flushOutput();
     flushTrace();
     reportStatus(performance.now());
+    if (hitBreak) {
+      // 걸리면 꺼지고 멈춘다. 다음 구간은 예약하지 않으므로 resume이 다시 건다.
+      breakpoint = undefined;
+      pause();
+      postState(runtime);
+      return;
+    }
     if (hasWork()) {
       queueSlice();
       return;
@@ -218,18 +232,25 @@ channel.port1.onmessage = () => {
   runSlice();
 };
 
+// persist가 false면 메모리, 아니면 token이 있는 MCP 모드는 로컬 서버의 디스크, 없으면 IndexedDB다.
+const pickStore = (token: string | undefined, persist: boolean): SnapshotStore => {
+  if (!persist) return createMemorySnapshotStore();
+  return token === undefined ? createIndexedDbSnapshotStore() : createHttpSnapshotStore(token);
+};
+
 const start = async (
   program: ProgramName,
   canvas: OffscreenCanvas,
   token: string | undefined,
+  persist: boolean,
 ): Promise<void> => {
   const context = canvas.getContext('2d');
   if (context === null) throw new Error('canvas 2d 컨텍스트를 만들 수 없다');
   const response = await fetch(PROGRAMS[program]);
   if (!response.ok) throw new Error(`${program} 프로그램을 받지 못했다: HTTP ${response.status}`);
+  breakpoint = undefined;
   const session = createSession({
-    // token이 있으면 MCP 모드라서 로컬 서버의 디스크에 저장한다.
-    store: token === undefined ? createIndexedDbSnapshotStore() : createHttpSnapshotStore(token),
+    store: pickStore(token, persist),
     clock: { nowMicros: () => performance.now() * MICROS_PER_MS },
     onUartTransmit: (byte) => {
       pendingOutput.push(byte);
@@ -260,6 +281,7 @@ const save = async (): Promise<void> => {
 
 const reset = async (): Promise<void> => {
   if (runtime === undefined) return;
+  breakpoint = undefined;
   await runtime.session.reset();
   cancelTouch();
   runtime.session.machine.framebuffer.dirty = true;
@@ -431,7 +453,7 @@ self.onmessage = (event: MessageEvent<MainToWorker>) => {
   const message = event.data;
   switch (message.type) {
     case 'start':
-      enqueue(() => start(message.program, message.canvas, message.token));
+      enqueue(() => start(message.program, message.canvas, message.token, message.persist));
       break;
     case 'uartInput':
       runtime?.session.machine.uart.receive(message.bytes);
@@ -463,6 +485,9 @@ self.onmessage = (event: MessageEvent<MainToWorker>) => {
     case 'resume':
       resume();
       if (runtime !== undefined) postState(runtime);
+      break;
+    case 'breakAt':
+      breakpoint = message.address ?? undefined;
       break;
     case 'step':
       guarded((current) => step(current, message.count));
