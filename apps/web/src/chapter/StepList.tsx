@@ -21,12 +21,17 @@ const Try = () => {
   return <Button label={action.label} disabled={state.busy} onClick={() => state.onTry(action)} />;
 };
 
+// Prose의 문단 간격은 직계 자식에만 걸린다. Collapsible 패널 안의 문단은 직계가 아니라서 한 겹 더 Prose로 감싼다.
 const More = ({ children }: { children?: ReactNode }) => (
-  <Collapsible label='더 읽기'>{children}</Collapsible>
+  <Collapsible label='더 읽기'>
+    <Prose>{children}</Prose>
+  </Collapsible>
 );
 
 const Quiz = ({ question, children }: { question: string; children?: ReactNode }) => (
-  <Collapsible label={question}>{children}</Collapsible>
+  <Collapsible label={question}>
+    <Prose>{children}</Prose>
+  </Collapsible>
 );
 
 const MDX_COMPONENTS = { Try, More, Quiz, CodeBlock };

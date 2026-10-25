@@ -24,10 +24,13 @@ export const MemoryView = ({ controller, state }: Props) => {
   const paused = state !== undefined && state.paused ? state : undefined;
   const pc = paused?.cpu.pc ?? 0;
   const base = viewBase(pc);
-  const bytes = usePeek(controller, paused, base, VIEW_BYTES);
+  const peek = usePeek(controller, paused, base, VIEW_BYTES);
 
   if (paused === undefined) return <Text tone='muted'>멈추면 pc 근처 메모리가 보인다</Text>;
-  if (bytes === undefined) return <Text tone='muted'>이 주소는 읽을 수 없다</Text>;
+  // 읽는 중에는 아무것도 보이지 않는다. 진짜 실패만 글로 알린다.
+  if (peek.status === 'pending') return null;
+  if (peek.status === 'failed') return <Text tone='muted'>이 주소는 읽을 수 없다</Text>;
+  const { bytes } = peek;
 
   const rows = Array.from({ length: Math.ceil(bytes.length / LINE_BYTES) }, (_, line) => {
     const start = line * LINE_BYTES;

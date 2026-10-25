@@ -32,11 +32,15 @@ type RunLineProps = {
 const RunLine = ({ controller, state, busy }: RunLineProps) => {
   const paused = state !== undefined && state.paused ? state : undefined;
   const pc = paused?.cpu.pc ?? 0;
-  const bytes = usePeek(controller, paused, pc, INSTRUCTION_BYTES);
+  const peek = usePeek(controller, paused, pc, INSTRUCTION_BYTES);
+  // 읽는 중이거나 읽지 못하면 역어셈블 줄을 비운다.
   const instruction =
-    bytes !== undefined && bytes.length >= INSTRUCTION_BYTES
+    peek.status === 'ready' && peek.bytes.length >= INSTRUCTION_BYTES
       ? disassemble(
-          new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(0, true),
+          new DataView(peek.bytes.buffer, peek.bytes.byteOffset, peek.bytes.byteLength).getUint32(
+            0,
+            true,
+          ),
           pc,
         )
       : '';
@@ -73,7 +77,7 @@ const RunLine = ({ controller, state, busy }: RunLineProps) => {
       ) : (
         <>
           <Text size='sm'>{`pc ${formatHex(state.cpu.pc)}`}</Text>
-          {paused !== undefined && <Text size='sm'>{instruction}</Text>}
+          {instruction !== '' && <Text size='sm'>{instruction}</Text>}
           {!state.paused && <Badge variant='secondary'>실행 중</Badge>}
           {state.cpu.idle && <Badge variant='secondary'>쉬는 중(wfi)</Badge>}
         </>
@@ -136,7 +140,11 @@ export const EmulatorColumn = ({
 
   return (
     <Stack className='gap-4'>
-      <div ref={screenRef} />
+      {/* canvas는 320x480 속성 그대로의 비율로, 슬롯보다 크지 않게 줄어든다. 비어 있어도 화면으로 읽히게 표면 색을 깐다. */}
+      <div
+        ref={screenRef}
+        className='w-full max-w-xs bg-surface-muted [&>canvas]:h-auto [&>canvas]:w-full'
+      />
       <div ref={terminalRef} />
       <Text size='sm' tone='muted'>
         {status}

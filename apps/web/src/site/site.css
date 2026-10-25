@@ -1,1 +1,6 @@
 @import '@eeennsu/web/themes/base.css';
+
+/* DS 토큰은 OS 다크 설정을 따라 바뀌는데 body 배경은 브라우저 기본(흰색)이라 글자가 안 보인다. 목차와 챕터 진입점만 이 파일을 쓴다. */
+body {
+  @apply bg-canvas text-fg;
+}
