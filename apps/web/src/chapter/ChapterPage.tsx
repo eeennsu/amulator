@@ -9,6 +9,7 @@ import { changedFields } from './changes';
 import { EmulatorColumn } from './EmulatorColumn';
 import { createStepRunner } from './runner';
 import { StepList } from './StepList';
+import { resultText } from './tryText';
 import type { ChapterContent, ChapterStep, InspectTab, TryAction } from './types';
 
 const ANDROID_COMPONENTS = { CodeBlock };
@@ -19,7 +20,14 @@ type StepRunner = ReturnType<typeof createStepRunner>;
 
 // 어느 실행기·단계·"처음으로" 요청의 시작 상태가 만들어졌는지와, 그 뒤 해 본 동작 수다.
 // 지금의 (실행기, 단계, 요청)과 다르면 시작 상태를 만드는 중이라서 busy는 상태에서 바로 나온다.
-type Settled = { runner: StepRunner; current: number; restart: number; done: number };
+// last는 방금 한 동작의 결과 한 줄이다.
+type Settled = {
+  runner: StepRunner;
+  current: number;
+  restart: number;
+  done: number;
+  last?: string;
+};
 type Notice = { runner: StepRunner; current: number; restart: number; text: string };
 type Tracked = {
   seen: MachineView | undefined;
@@ -139,14 +147,15 @@ export const ChapterPage = ({ content: { steps, Android } }: Props) => {
     const alive = () => liveRunner.current === runner;
     setPerforming(runner);
     setNotice(undefined);
+    const before = state;
     void runner
       .perform(action)
       .then(
-        () => {
+        (after) => {
           if (!alive()) return;
           setSettled((previous) =>
             previous !== undefined && previous.runner === runner && previous.current === current
-              ? { ...previous, done: previous.done + 1 }
+              ? { ...previous, done: previous.done + 1, last: resultText(action, before, after) }
               : previous,
           );
         },
@@ -191,6 +200,7 @@ export const ChapterPage = ({ content: { steps, Android } }: Props) => {
             current={current}
             reached={reached}
             done={ready ? settled.done : 0}
+            last={ready ? settled.last : undefined}
             busy={busy}
             onSelect={select}
             onRestart={restartStep}

@@ -36,7 +36,7 @@ export const CH2_STEPS: readonly StepPlan[] = [
     program: 'clock',
     start: { kind: 'entry' },
     tab: 'memory',
-    actions: [{ label: '한 단계', kind: 'step', count: 1 }],
+    actions: [{ label: '명령어 1개 실행', kind: 'step', count: 1 }],
   },
   {
     title: '해석하고 실행하기',
@@ -44,8 +44,8 @@ export const CH2_STEPS: readonly StepPlan[] = [
     start: { kind: 'entry' }, // 진입 주소(0x80000000)가 곧 `la sp` 앞이다
     tab: 'registers',
     actions: [
-      { label: 'la sp 실행', kind: 'step', count: 2 }, // auipc sp + addi sp
-      { label: 'la t0 실행', kind: 'step', count: 2 }, // auipc t0 + addi t0
+      { label: 'la sp 실행 (명령어 2개)', kind: 'step', count: 2 }, // auipc sp + addi sp
+      { label: 'la t0 실행 (명령어 2개)', kind: 'step', count: 2 }, // auipc t0 + addi t0
       { label: 'csrw mtvec 실행', kind: 'step', count: 1 },
     ],
   },
@@ -55,12 +55,12 @@ export const CH2_STEPS: readonly StepPlan[] = [
     start: { kind: 'runTo', ...BSS_LOOP },
     tab: 'registers',
     actions: [
-      // 한 바퀴(bgeu, sw, addi, j)를 한 단계씩 돈 다음 한 바퀴를 한 번에 더 돈다.
+      // 한 바퀴(bgeu, sw, addi, j)를 명령어 하나씩 돈 다음 한 바퀴를 한 번에 더 돈다.
       { label: 'bgeu 실행', kind: 'step', count: 1 },
       { label: 'sw 실행', kind: 'step', count: 1 },
       { label: 'addi 실행', kind: 'step', count: 1 },
       { label: 'j 실행', kind: 'step', count: 1 },
-      { label: '한 바퀴 더', kind: 'step', count: 4 },
+      { label: '한 바퀴 더 (명령어 4개 실행)', kind: 'step', count: 4 },
     ],
   },
   {
@@ -75,7 +75,7 @@ export const CH2_STEPS: readonly StepPlan[] = [
         target: A2,
         value: FAKE_UPTIME,
       },
-      { label: '출력까지 실행', kind: 'runTo', ...AFTER_PRINT_UPTIME },
+      { label: 'uptime 출력까지 실행', kind: 'runTo', ...AFTER_PRINT_UPTIME },
     ],
   },
   {
@@ -84,9 +84,9 @@ export const CH2_STEPS: readonly StepPlan[] = [
     start: { kind: 'running' },
     tab: 'registers',
     actions: [
-      { label: '트랩까지 실행', kind: 'runTo', ...TRAP_ENTRY },
+      { label: 'trap_entry까지 실행', kind: 'runTo', ...TRAP_ENTRY },
       { label: 'mret까지 실행', kind: 'runTo', ...MRET },
-      { label: 'mret 한 단계 실행', kind: 'step', count: 1 },
+      { label: 'mret 실행', kind: 'step', count: 1 },
     ],
   },
 ];
