@@ -1,4 +1,4 @@
-import { Box, Card, CodeBlock, Collapsible, Prose, Stack } from '@eeennsu/web';
+import { Box, Card, CodeBlock, Collapsible, Prose, Stack, Text } from '@eeennsu/web';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import type { CpuView } from '@amulator/core/inspect';
@@ -214,11 +214,16 @@ export const ChapterPage = ({ content: { steps, Android } }: Props) => {
             onTry={perform}
           />
           <Card>
-            <Collapsible label='진짜 안드로이드 에뮬레이터는'>
-              <Prose>
-                <Android components={ANDROID_COMPONENTS} />
-              </Prose>
-            </Collapsible>
+            <Stack className='gap-4'>
+              <Text heading='2' size='xl'>
+                진짜 안드로이드 에뮬레이터는
+              </Text>
+              <Collapsible label='더 읽기'>
+                <Prose className='text-fg-muted'>
+                  <Android components={ANDROID_COMPONENTS} />
+                </Prose>
+              </Collapsible>
+            </Stack>
           </Card>
         </Stack>
       </Box>

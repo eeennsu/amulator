@@ -26,7 +26,9 @@ const Try = () => {
     <Box className='rounded-xl border border-border p-4'>
       <Stack className='gap-2'>
         <Stack direction='row' align='center' className='gap-2'>
-          <Text>해 보기</Text>
+          <Text heading='3' size='lg'>
+            해 보기
+          </Text>
           <Badge>{`${state.done}/${state.actions.length}`}</Badge>
         </Stack>
         <Text size='sm' tone='muted'>
@@ -52,13 +54,13 @@ const Try = () => {
 // Prose의 문단 간격은 직계 자식에만 걸린다. Collapsible 패널 안의 문단은 직계가 아니라서 한 겹 더 Prose로 감싼다.
 const More = ({ children }: { children?: ReactNode }) => (
   <Collapsible label='더 읽기'>
-    <Prose>{children}</Prose>
+    <Prose className='text-fg-muted'>{children}</Prose>
   </Collapsible>
 );
 
 const Quiz = ({ question, children }: { question: string; children?: ReactNode }) => (
   <Collapsible label={question}>
-    <Prose>{children}</Prose>
+    <Prose className='text-fg-muted'>{children}</Prose>
   </Collapsible>
 );
 
@@ -97,7 +99,9 @@ export const StepList = ({
         return (
           <Card key={index}>
             <Stack className='gap-4'>
-              <Text heading='3'>{step.title}</Text>
+              <Text heading='2' size='xl'>
+                {step.title}
+              </Text>
               <Prose>
                 <TryContext value={{ actions: step.actions, done, last, busy, onTry }}>
                   <Body components={MDX_COMPONENTS} />
@@ -126,21 +130,26 @@ export const StepList = ({
       if (index <= reached) {
         return (
           <Card key={index}>
-            <Collapsible
-              label={`✓ ${step.title}`}
-              open={false}
-              onOpenChange={(open) => {
-                if (open && !busy) onSelect(index);
-              }}
-            >
-              {null}
-            </Collapsible>
+            {/* 접힌 제목도 제목 목차에 남도록 h2로 감싼다. 패널은 비어 있어 제목에 본문이 섞이지 않는다. */}
+            <h2>
+              <Collapsible
+                label={`✓ ${step.title}`}
+                open={false}
+                onOpenChange={(open) => {
+                  if (open && !busy) onSelect(index);
+                }}
+              >
+                {null}
+              </Collapsible>
+            </h2>
           </Card>
         );
       }
       return (
         <Card key={index}>
-          <Text tone='muted'>{step.title}</Text>
+          <Text heading='2' tone='muted'>
+            {step.title}
+          </Text>
         </Card>
       );
     })}
