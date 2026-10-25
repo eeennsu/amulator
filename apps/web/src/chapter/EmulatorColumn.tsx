@@ -1,0 +1,162 @@
+import { Badge, Button, Stack, Tabs, Text, type TabItem } from '@eeennsu/web';
+import { useEffect, type RefObject } from 'react';
+
+import type { DeviceAccess } from '@amulator/core/bus';
+import { disassemble } from '@amulator/core/cpu/disassemble';
+
+import type { EmulatorController } from '../emulator/mountEmulator';
+import type { MachineView } from '../messages';
+import { DeviceLog } from './DeviceLog';
+import { formatHex } from './format';
+import { MemoryView } from './MemoryView';
+import { RegisterTable } from './RegisterTable';
+import type { InspectTab } from './types';
+import { usePeek } from './usePeek';
+
+const INSTRUCTION_BYTES = 4;
+const TAB_LABELS: Record<InspectTab, string> = {
+  registers: '레지스터',
+  memory: '메모리',
+  devices: '장치 기록',
+};
+
+const isInspectTab = (value: string): value is InspectTab => Object.hasOwn(TAB_LABELS, value);
+
+type RunLineProps = {
+  controller: EmulatorController | undefined;
+  state: MachineView | undefined;
+  busy: boolean;
+};
+
+// 멈춘 상태마다 pc의 명령어 4바이트를 읽어 역어셈블 한 줄로 보인다.
+const RunLine = ({ controller, state, busy }: RunLineProps) => {
+  const paused = state !== undefined && state.paused ? state : undefined;
+  const pc = paused?.cpu.pc ?? 0;
+  const bytes = usePeek(controller, paused, pc, INSTRUCTION_BYTES);
+  const instruction =
+    bytes !== undefined && bytes.length >= INSTRUCTION_BYTES
+      ? disassemble(
+          new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(0, true),
+          pc,
+        )
+      : '';
+
+  const send = (type: 'pause' | 'resume') => controller?.send({ type });
+
+  return (
+    <Stack direction='row' align='center' wrap className='gap-2'>
+      <Button
+        label='멈춤'
+        size='sm'
+        variant='secondary'
+        disabled={busy}
+        onClick={() => send('pause')}
+      />
+      <Button
+        label='한 단계'
+        size='sm'
+        variant='secondary'
+        disabled={busy}
+        onClick={() => controller?.send({ type: 'step', count: 1 })}
+      />
+      <Button
+        label='계속'
+        size='sm'
+        variant='secondary'
+        disabled={busy}
+        onClick={() => send('resume')}
+      />
+      {state === undefined ? (
+        <Text size='sm' tone='muted'>
+          시작 상태를 만드는 중
+        </Text>
+      ) : (
+        <>
+          <Text size='sm'>{`pc ${formatHex(state.cpu.pc)}`}</Text>
+          {paused !== undefined && <Text size='sm'>{instruction}</Text>}
+          {!state.paused && <Badge variant='secondary'>실행 중</Badge>}
+          {state.cpu.idle && <Badge variant='secondary'>쉬는 중(wfi)</Badge>}
+        </>
+      )}
+    </Stack>
+  );
+};
+
+type Props = {
+  screenRef: RefObject<HTMLDivElement | null>;
+  terminalRef: RefObject<HTMLDivElement | null>;
+  controller: EmulatorController | undefined;
+  state: MachineView | undefined;
+  accesses: readonly DeviceAccess[];
+  changed: ReadonlySet<string>;
+  tab: InspectTab;
+  onTabChange: (tab: InspectTab) => void;
+  busy: boolean;
+  status: string;
+  notice: string;
+};
+
+// 화면과 터미널은 Tabs 밖에 둔다. DS Tabs는 숨은 패널을 마운트하지 않아서, 안에 두면 탭을 바꿀 때 에뮬레이터가 다시 켜진다.
+export const EmulatorColumn = ({
+  screenRef,
+  terminalRef,
+  controller,
+  state,
+  accesses,
+  changed,
+  tab,
+  onTabChange,
+  busy,
+  status,
+  notice,
+}: Props) => {
+  const devicesOpen = tab === 'devices';
+  useEffect(() => {
+    controller?.send({ type: 'trace', enabled: devicesOpen });
+  }, [controller, devicesOpen]);
+
+  const items: TabItem[] = [
+    {
+      value: 'registers',
+      label: TAB_LABELS.registers,
+      content:
+        state === undefined ? (
+          <Text tone='muted'>시작 상태를 만드는 중이다</Text>
+        ) : (
+          <RegisterTable cpu={state.cpu} changed={changed} />
+        ),
+    },
+    {
+      value: 'memory',
+      label: TAB_LABELS.memory,
+      content: <MemoryView controller={controller} state={state} />,
+    },
+    { value: 'devices', label: TAB_LABELS.devices, content: <DeviceLog accesses={accesses} /> },
+  ];
+
+  return (
+    <Stack className='gap-4'>
+      <div ref={screenRef} />
+      <div ref={terminalRef} />
+      <div role='status'>
+        <Text size='sm' tone='muted'>
+          {status}
+        </Text>
+        {notice !== '' && (
+          <Text size='sm' tone='danger'>
+            {notice}
+          </Text>
+        )}
+      </div>
+      <RunLine controller={controller} state={state} busy={busy} />
+      <Tabs
+        label='들여다보기'
+        items={items}
+        value={tab}
+        onValueChange={(next) => {
+          if (isInspectTab(next)) onTabChange(next);
+        }}
+      />
+    </Stack>
+  );
+};
