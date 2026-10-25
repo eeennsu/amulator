@@ -27,8 +27,22 @@ type SnapshotInfo = { meta: SnapshotMeta; sections: SnapshotSection[]; gzipBytes
 
 type Reply = Extract<WorkerToMain, { type: 'memory' | 'snapshotInfo' }>;
 
+type MessageOf<T extends WorkerToMain['type']> = Extract<WorkerToMain, { type: T }>;
+
+type Waiter = { accept: (message: WorkerToMain) => boolean; reject: (error: Error) => void };
+
+const isType = <T extends WorkerToMain['type']>(
+  message: WorkerToMain,
+  type: T,
+): message is MessageOf<T> => message.type === type;
+
 export type EmulatorController = {
   send: (message: MainToWorker) => void;
+  // 부른 뒤에 오는 메시지만 본다. 시간 제한은 없고, dispose하면 거부한다.
+  waitFor: <T extends WorkerToMain['type']>(
+    type: T,
+    predicate?: (message: MessageOf<T>) => boolean,
+  ) => Promise<MessageOf<T>>;
   peek: (address: number, length: number) => Promise<Uint8Array>;
   describeSnapshot: () => Promise<SnapshotInfo>;
   dispose: () => void;
@@ -54,6 +68,7 @@ export const mountEmulator = (slots: Slots, options: Options): EmulatorControlle
 
   // peek와 describeSnapshot이 한 표를 쓴다. id가 겹치지 않아야 id가 있는 error를 알맞은 요청에 돌려줄 수 있다.
   const requests = createRequestTable<Reply>();
+  const waiters = new Set<Waiter>();
 
   // StrictMode는 마운트를 두 번 하므로 canvas도 마운트마다 새로 만든다. 한 canvas는 한 번만 넘길 수 있다.
   const canvas = document.createElement('canvas');
@@ -92,6 +107,9 @@ export const mountEmulator = (slots: Slots, options: Options): EmulatorControlle
       case 'error':
         if (message.id !== undefined) requests.reject(message.id, new Error(message.message));
         break;
+    }
+    for (const waiter of [...waiters]) {
+      if (waiter.accept(message)) waiters.delete(waiter);
     }
     onMessage(message);
   };
@@ -156,6 +174,19 @@ export const mountEmulator = (slots: Slots, options: Options): EmulatorControlle
 
   return {
     send,
+    waitFor: (type, predicate = () => true) => {
+      if (disposed) return Promise.reject(new Error(CLOSED_MESSAGE));
+      return new Promise((resolve, reject) => {
+        waiters.add({
+          reject,
+          accept: (message) => {
+            if (!isType(message, type) || !predicate(message)) return false;
+            resolve(message);
+            return true;
+          },
+        });
+      });
+    },
     peek: async (address, length) => {
       if (disposed) throw new Error(CLOSED_MESSAGE);
       const { id, promise } = requests.open();
@@ -182,6 +213,8 @@ export const mountEmulator = (slots: Slots, options: Options): EmulatorControlle
       terminal.dispose();
       bridge?.close();
       requests.rejectAll(new Error(CLOSED_MESSAGE));
+      for (const waiter of waiters) waiter.reject(new Error(CLOSED_MESSAGE));
+      waiters.clear();
     },
   };
 };
