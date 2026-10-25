@@ -97,6 +97,27 @@ describe('createStepRunner', () => {
   });
 });
 
+describe('끝난 호출이 남기는 기다림', () => {
+  it('앞선 호출이 성공해도 다음 호출의 worker 오류를 제 글로 거부한다', async () => {
+    await runner.prepare({ kind: 'entry' });
+    await runner.perform({ kind: 'step', count: 1, label: '' });
+    await runner.prepare({ kind: 'running' });
+    // 실행 중에는 한 단계 실행을 거부하는 worker 오류가 id 없이 온다
+    await expect(runner.perform({ kind: 'step', count: 1, label: '' })).rejects.toThrow(
+      '멈춘 상태에서만',
+    );
+  });
+
+  it('오류로 실패한 호출 뒤의 호출은 상태를 받는다', async () => {
+    await runner.prepare({ kind: 'entry' });
+    await expect(
+      runner.perform({ kind: 'setRegister', target: 99, value: 1, label: '' }),
+    ).rejects.toThrow('레지스터 번호는');
+    const view = await runner.perform({ kind: 'step', count: 1, label: '' });
+    expect(view.cpu.pc).not.toBe(ENTRY);
+  });
+});
+
 describe('createStepRunner 오류', () => {
   // 'error'만 답하고 나머지는 영영 오지 않는 포트
   const failingPort = (message: string): WorkerPort => ({

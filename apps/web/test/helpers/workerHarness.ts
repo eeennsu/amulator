@@ -7,6 +7,7 @@ import type { MainToWorker, WorkerToMain } from '../../src/messages';
 const GUEST_OUT = resolve(import.meta.dirname, '../../../../guest/baremetal/out');
 // 64 MiB 머신 생성과 부팅이 느린 환경에서도 기다릴 수 있게 넉넉히 둔다.
 const WAIT_TIMEOUT_MS = 20_000;
+const ABORTED_MESSAGE = '기다림을 취소했다';
 // Node에는 IndexedDB가 없어 저장소를 못 읽고 새로 부팅하는 것이 정상이다. 이 경고만 삼킨다.
 const EXPECTED_WARNINGS = ['스냅샷 저장소를 읽지 못해', '스냅샷을 지우지 못했다'];
 
@@ -19,6 +20,7 @@ export type WorkerHarness = {
   waitFor: <T extends WorkerToMain['type']>(
     type: T,
     predicate?: Predicate<Extract<WorkerToMain, { type: T }>>,
+    signal?: AbortSignal,
   ) => Promise<Extract<WorkerToMain, { type: T }>>;
   dispose: () => void;
 };
@@ -79,8 +81,12 @@ export const startWorker = async (): Promise<WorkerHarness> => {
     fakeSelf.onmessage?.(new MessageEvent('message', { data: message }));
   };
 
-  const waitFor: WorkerHarness['waitFor'] = (type, predicate = () => true) =>
+  const waitFor: WorkerHarness['waitFor'] = (type, predicate = () => true, signal) =>
     new Promise((resolvePromise, reject) => {
+      if (signal?.aborted) {
+        reject(new Error(ABORTED_MESSAGE));
+        return;
+      }
       const poll = (): boolean => {
         for (let index = cursor; index < messages.length; index += 1) {
           const message = messages[index];
@@ -90,12 +96,20 @@ export const startWorker = async (): Promise<WorkerHarness> => {
           if (!predicate(narrowed)) continue;
           cursor = index + 1;
           clearTimeout(timer);
+          signal?.removeEventListener('abort', onAbort);
           resolvePromise(narrowed);
           return true;
         }
         return false;
       };
+      // abort된 기다림은 더 이상 메시지를 가져가지 않는다.
+      const onAbort = (): void => {
+        clearTimeout(timer);
+        waiters = waiters.filter((waiter) => waiter.poll !== poll);
+        reject(new Error(ABORTED_MESSAGE));
+      };
       const timer = setTimeout(() => {
+        signal?.removeEventListener('abort', onAbort);
         waiters = waiters.filter((waiter) => waiter.poll !== poll);
         const seen = messages
           .slice(cursor)
@@ -108,6 +122,7 @@ export const startWorker = async (): Promise<WorkerHarness> => {
           ),
         );
       }, WAIT_TIMEOUT_MS);
+      signal?.addEventListener('abort', onAbort, { once: true });
       if (!poll()) waiters.push({ poll, timer });
     });
 

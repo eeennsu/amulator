@@ -11,6 +11,7 @@ const SCREEN_ID = 'screen';
 const SCREEN_WIDTH = 320;
 const SCREEN_HEIGHT = 480;
 const CLOSED_MESSAGE = '에뮬레이터가 닫혔다';
+const ABORTED_MESSAGE = '기다림을 취소했다';
 
 type Slots = { screen: HTMLElement; terminal: HTMLElement };
 
@@ -39,9 +40,11 @@ const isType = <T extends WorkerToMain['type']>(
 export type EmulatorController = {
   send: (message: MainToWorker) => void;
   // 부른 뒤에 오는 메시지만 본다. 시간 제한은 없고, dispose하면 거부한다.
+  // signal이 abort되면 기다림을 목록에서 빼고 `기다림을 취소했다`로 거부한다.
   waitFor: <T extends WorkerToMain['type']>(
     type: T,
     predicate?: (message: MessageOf<T>) => boolean,
+    signal?: AbortSignal,
   ) => Promise<MessageOf<T>>;
   peek: (address: number, length: number) => Promise<Uint8Array>;
   describeSnapshot: () => Promise<SnapshotInfo>;
@@ -174,17 +177,25 @@ export const mountEmulator = (slots: Slots, options: Options): EmulatorControlle
 
   return {
     send,
-    waitFor: (type, predicate = () => true) => {
+    waitFor: (type, predicate = () => true, signal) => {
       if (disposed) return Promise.reject(new Error(CLOSED_MESSAGE));
+      if (signal?.aborted) return Promise.reject(new Error(ABORTED_MESSAGE));
       return new Promise((resolve, reject) => {
-        waiters.add({
+        const onAbort = (): void => {
+          waiters.delete(waiter);
+          reject(new Error(ABORTED_MESSAGE));
+        };
+        const waiter: Waiter = {
           reject,
           accept: (message) => {
             if (!isType(message, type) || !predicate(message)) return false;
+            signal?.removeEventListener('abort', onAbort);
             resolve(message);
             return true;
           },
-        });
+        };
+        waiters.add(waiter);
+        signal?.addEventListener('abort', onAbort, { once: true });
       });
     },
     peek: async (address, length) => {
