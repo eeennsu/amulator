@@ -21,17 +21,16 @@ export const hintText = (action: TryAction): string => {
   }
 };
 
-// 방금 누른 동작의 결과다. 앞 상태가 멈춘 상태가 아니면 그 pc는 믿을 수 없어 뒤 pc만 보인다.
+// 방금 누른 동작의 결과다. 레지스터를 고친 동작은 pc가 안 움직이므로 그 레지스터의 새 값만 보인다.
+// 그 밖의 동작은 pc의 앞뒤를 보이되, 앞 상태가 멈춘 상태가 아니면 그 pc는 믿을 수 없어 뒤 pc만 보인다.
 export const resultText = (action: TryAction, before: View | undefined, after: View): string => {
+  if (action.kind === 'setRegister') {
+    const value = action.target === 'pc' ? after.cpu.pc : (after.cpu.x[action.target] ?? 0);
+    return `✓ 방금: ${action.label} — ${registerName(action.target)} ${formatHex(value)}`;
+  }
   const pc =
     before !== undefined && before.paused
       ? `pc ${formatHex(before.cpu.pc)} → ${formatHex(after.cpu.pc)}`
       : `pc ${formatHex(after.cpu.pc)}`;
-  const written =
-    action.kind === 'setRegister'
-      ? `, ${registerName(action.target)} ${formatHex(
-          action.target === 'pc' ? after.cpu.pc : (after.cpu.x[action.target] ?? 0),
-        )}`
-      : '';
-  return `✓ 방금: ${action.label} — ${pc}${written}`;
+  return `✓ 방금: ${action.label} — ${pc}`;
 };

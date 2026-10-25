@@ -42,7 +42,8 @@ const Try = () => {
             />
           </Box>
         )}
-        {state.last !== undefined && <Text size='sm'>{state.last}</Text>}
+        {/* 낭독 영역은 내용이 바뀌기 전에 있어야 읽힌다. 그래서 래퍼는 늘 두고 안의 Text만 조건으로 그린다. */}
+        <div role='status'>{state.last !== undefined && <Text size='sm'>{state.last}</Text>}</div>
       </Stack>
     </Box>
   );

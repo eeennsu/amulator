@@ -45,7 +45,7 @@ describe('resultText', () => {
     );
   });
 
-  it('레지스터를 바꾸면 새 값을 덧붙인다', () => {
+  it('레지스터를 바꾸면 pc 없이 새 값만 보인다', () => {
     const action = {
       label: 'a2를 12345로 고치기',
       kind: 'setRegister',
@@ -53,7 +53,28 @@ describe('resultText', () => {
       value: 12_345,
     } as const;
     expect(resultText(action, view(0x8000_0154), view(0x8000_0154, 12_345))).toBe(
-      '✓ 방금: a2를 12345로 고치기 — pc 80000154 → 80000154, a2 00003039',
+      '✓ 방금: a2를 12345로 고치기 — a2 00003039',
+    );
+  });
+
+  it('pc를 바꾸면 pc의 새 값이 보인다', () => {
+    const action = {
+      label: 'pc 고치기',
+      kind: 'setRegister',
+      target: 'pc',
+      value: 0x8000_0100,
+    } as const;
+    expect(hintText(action)).toBe('누르면 왼쪽 레지스터 pc 값을 2147483904로 바꾼다');
+    expect(resultText(action, view(0x8000_0000), view(0x8000_0100))).toBe(
+      '✓ 방금: pc 고치기 — pc 80000100',
+    );
+  });
+
+  it('표 밖 번호는 x{번호} 이름으로 보인다', () => {
+    const action = { label: 'x40 고치기', kind: 'setRegister', target: 40, value: 1 } as const;
+    expect(hintText(action)).toBe('누르면 왼쪽 레지스터 x40 값을 1로 바꾼다');
+    expect(resultText(action, view(0x8000_0000), view(0x8000_0000))).toBe(
+      '✓ 방금: x40 고치기 — x40 00000000',
     );
   });
 

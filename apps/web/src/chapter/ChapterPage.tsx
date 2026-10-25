@@ -160,7 +160,14 @@ export const ChapterPage = ({ content: { steps, Android } }: Props) => {
           );
         },
         (error: unknown) => {
-          if (alive()) setNotice({ runner, current, restart, text: messageOf(error) });
+          if (!alive()) return;
+          // 오류 알림 옆에 이전 성공의 "방금" 줄이 남지 않게 한다.
+          setSettled((previous) =>
+            previous !== undefined && previous.runner === runner && previous.current === current
+              ? { ...previous, last: undefined }
+              : previous,
+          );
+          setNotice({ runner, current, restart, text: messageOf(error) });
         },
       )
       .finally(() => {
