@@ -69,7 +69,12 @@ export const CH2_STEPS: readonly StepPlan[] = [
     start: { kind: 'runTo', ...BEFORE_PRINT_UPTIME },
     tab: 'registers',
     actions: [
-      { label: 'a2를 12345로 고치기', kind: 'setRegister', target: A2, value: FAKE_UPTIME },
+      {
+        label: `a2를 ${FAKE_UPTIME}로 고치기`,
+        kind: 'setRegister',
+        target: A2,
+        value: FAKE_UPTIME,
+      },
       { label: '출력까지 실행', kind: 'runTo', ...AFTER_PRINT_UPTIME },
     ],
   },
@@ -81,7 +86,7 @@ export const CH2_STEPS: readonly StepPlan[] = [
     actions: [
       { label: '트랩까지 실행', kind: 'runTo', ...TRAP_ENTRY },
       { label: 'mret까지 실행', kind: 'runTo', ...MRET },
-      { label: '한 단계', kind: 'step', count: 1 },
+      { label: 'mret 한 단계 실행', kind: 'step', count: 1 },
     ],
   },
 ];

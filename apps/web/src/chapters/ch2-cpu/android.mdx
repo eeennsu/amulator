@@ -1,1 +1,18 @@
-진짜 안드로이드 에뮬레이터와 비교하는 글은 아직 쓰지 않았다.
+진짜 안드로이드 에뮬레이터는 CPU를 이 에뮬레이터와 다르게 돌린다. 갈림길은 호스트 컴퓨터의 하이퍼바이저를 쓸 수 있느냐다.
+
+- 하이퍼바이저가 있으면 게스트의 명령어를 호스트 CPU가 직접 실행한다. 안드로이드 문서는 Windows에서는 WHPX, Linux에서는 KVM, macOS에서는 Hypervisor.Framework를 쓴다고 하고, 이 가속은 x86 계열 시스템 이미지에 해당한다고 설명한다.
+- 하이퍼바이저가 없으면 같은 문서에 따라 에뮬레이터가 VM의 기계어를 블록 단위로 번역해야 하고, 이 과정은 꽤 느릴 수 있다. QEMU에서 이런 동적 번역을 맡는 부분이 TCG다.
+
+TCG는 QEMU 공식 문서에서 이렇게 설명한다. 처음 만난 코드를 호스트의 명령어로 바꾸고, 필요한 번역 블록(TB)이 메모리에 없을 때만 새로 번역한다. 번역 블록 여러 개를 직접 이어 붙여, 메인 루프로 돌아가지 않고 다음 블록으로 넘어가기도 한다.
+
+AOSP에 올라온 QEMU 소스에서도 이 구조가 보인다. `cpu_exec`가 인터럽트를 확인하고, 번역 블록을 찾고, 그 블록을 실행하는 일을 반복한다. 블록을 찾는 `tb_find`는 번역해 둔 게 없을 때만 새로 번역한다.
+
+이 에뮬레이터에는 번역이 없다. `Cpu.step`이 명령어 하나를 꺼내 `switch`로 해석하고, 결과를 레지스터와 메모리에 반영하고, 다음 명령어로 간다. 번역해 둔 결과를 저장하는 곳도 없어서 같은 명령어를 만날 때마다 다시 해석한다. 명령어 하나가 곧 실행 단위라서 이 챕터의 [한 단계]는 명령어 하나를 실행하는 일이 된다.
+
+인터럽트를 확인하는 때도 다르다. QEMU는 번역 블록 사이에서 확인하고, 이 에뮬레이터는 명령어 하나를 실행하기 전마다 확인한다.
+
+출처와 확인일은 모두 2026-10-25다.
+
+- [QEMU 문서: TCG Translator Internals](https://www.qemu.org/docs/master/devel/tcg.html), 확인일 2026-10-25
+- [Android 문서: 하드웨어 가속 구성](https://developer.android.com/studio/run/emulator-acceleration), 확인일 2026-10-25
+- [AOSP `platform/external/qemu`의 `accel/tcg/cpu-exec.c`](https://android.googlesource.com/platform/external/qemu/+/f0c183f1cc7456ecd6f3607f2f47893768ae4334/accel/tcg/cpu-exec.c), 커밋 `f0c183f`의 `tb_find`(379줄)와 `cpu_exec`(676줄), 확인일 2026-10-25
