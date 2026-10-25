@@ -9,13 +9,15 @@ import { BYTE_HEX_WIDTH, formatHex } from './format';
 import { usePeek } from './usePeek';
 
 const LINE_BYTES = 16;
-const VIEW_BYTES = 32;
+// pc 줄과 그 앞뒤 한 줄씩, 세 줄이다.
+const VIEW_BYTES = LINE_BYTES * 3;
 const INSTRUCTION_BYTES = 4;
 const COLUMNS: TableColumn[] = [{ label: '주소' }, { label: '바이트' }];
 
 type Props = { controller: EmulatorController | undefined; state: MachineView | undefined };
 
-// pc가 든 16바이트 줄과 그 앞 줄을 읽는다. 주소 계산에 비트 연산을 쓰지 않는다(0x8000_0000 위가 음수가 된다).
+// pc가 든 줄의 앞 줄에서 시작한다. 진입 주소에서는 RAM_BASE로 잘려 pc 줄과 다음 두 줄이 보인다.
+// 주소 계산에 비트 연산을 쓰지 않는다(0x8000_0000 위가 음수가 된다).
 const viewBase = (pc: number): number => Math.max(RAM_BASE, pc - (pc % LINE_BYTES) - LINE_BYTES);
 
 export const MemoryView = ({ controller, state }: Props) => {

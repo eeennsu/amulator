@@ -138,10 +138,11 @@ export const EmulatorColumn = ({
     <Stack className='gap-4'>
       <div ref={screenRef} />
       <div ref={terminalRef} />
+      <Text size='sm' tone='muted'>
+        {status}
+      </Text>
+      {/* status에는 1초마다 바뀌는 MIPS가 들어 있어 낭독 영역에 넣지 않는다. 실행기 오류만 알린다. */}
       <div role='status'>
-        <Text size='sm' tone='muted'>
-          {status}
-        </Text>
         {notice !== '' && (
           <Text size='sm' tone='danger'>
             {notice}
