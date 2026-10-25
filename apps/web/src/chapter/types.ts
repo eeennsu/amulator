@@ -1,3 +1,5 @@
+import type { MDXContent } from 'mdx/types';
+
 import type { RegisterTarget } from '../messages';
 import type { ProgramName } from '../programs';
 
@@ -21,3 +23,7 @@ export type StepPlan = {
   tab: InspectTab;
   actions: TryAction[];
 };
+
+export type ChapterStep = StepPlan & { Body: MDXContent };
+
+export type ChapterContent = { steps: ChapterStep[]; Android: MDXContent };

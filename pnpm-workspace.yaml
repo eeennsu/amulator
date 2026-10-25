@@ -3,3 +3,6 @@ packages:
   - apps/*
 allowBuilds:
   esbuild: false
+minimumReleaseAgeExclude:
+  - '@eeennsu/tokens@0.5.0'
+  - '@eeennsu/web@0.5.0'
