@@ -26,7 +26,7 @@ export const CHAPTERS: readonly ChapterEntry[] = [
     number: 2,
     title: 'CPU',
     summary: '명령어를 꺼내 해석하고 실행하기, 트랩',
-    status: 'review',
+    status: 'reviewed',
     load: async () => (await import('../chapters/ch2-cpu/content')).CH2_CONTENT,
   },
   {
