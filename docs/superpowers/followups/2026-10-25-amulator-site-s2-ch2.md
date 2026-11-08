@@ -9,6 +9,7 @@
 - Task 1~8 완료. 2장은 사실 대조(opus)와 사용자 읽기를 통과해 `chapters.ts`에서 `status: 'reviewed'`다.
 - Task 8(design-flow 디자인 마무리, 2026-11-08): 목차 폭·링크, 챕터 두 열 비율 3:2, 터미널 폭, 레지스터 표 두 항목씩, ✓ 카드를 ghost Button으로, 중복 문구 정리. 마무리 검사(임의값·hex·fontFamily·스케일 밖 간격) 0건. 브랜드 색은 사용자 결정으로 DS 기본 파랑을 그대로 쓴다(`site.css` 재선언 없음). DS 피드백은 `docs/ds-feedback.md`.
 - `pnpm typecheck`, `lint`, `format:check`, `test`, `build:plugin`, `smoke:plugin`, `e2e`가 통과한다(2026-11-08).
+- 최종 리뷰(opus, 2026-11-08): Critical 0, Important 4를 병합 전에 고쳤다. 실행 중에 실행 줄·레지스터 표가 resume 순간 값을 지금 값처럼 보이던 것(worker는 실행 중 `state`를 보내지 않는다), 목차·챕터 링크를 상대경로로(S1 후속의 `/emulator.html` 항목도 함께 풀림), `CLAUDE.md`의 `web.md` import 경로, Review Focus 2 테스트의 `breakAt(null)`·`pause` 단언. 아래 미룬 지적은 리뷰어가 "남김"으로 판정한 것이다.
 
 ## 다음 챕터 전에 정할 것
 
@@ -29,16 +30,16 @@
 - `perform` 재진입 때 다른 호출의 `finally`가 `performing`을 지울 수 있다(지금은 도달하지 않는다).
 - pc가 RAM 마지막 16바이트에 있으면 메모리 탭의 48바이트 읽기가 RAM 끝을 넘어 "읽을 수 없다"가 보인다.
 - 실행 줄은 읽는 동안 pc만 있고 역어셈블이 비는 순간이 있다(의도한 선택).
-- pc 대상 `setRegister` 안내는 10진수, 결과 줄은 16진수다.
+- `setRegister` 안내는 10진수, 결과 줄과 레지스터 표는 16진수다. pc뿐 아니라 모든 대상이 그렇다(4단계에서 a2에 12345를 넣으면 표에 `00003039`). `4-edit.mdx`에 한 문장 더하면 풀린다.
 - 5단계처럼 실행 중 상태에서 시작하는 단계는 첫 멈춤(trap_entry)에서 바뀐 값 강조가 없다. 강조는 연속한 멈춘 상태 둘을 비교하기 때문이다. 글은 값이 "적힌다"고만 말해 어긋나지는 않는다.
 
 ### 테스트
 - 트랩으로 mtvec에 들어간 뒤 `breakAt`에 걸리는 경우를 지키는 core 테스트가 없다. `run`과 `runUntil` 루프 본문이 두 벌이다.
 - `breakAt: null`·덮어쓰기 분기, 컨트롤러 `waitFor`의 abort 경로, `ChapterPage` 배선(last 리셋, before 포착)에 테스트가 없다.
-- 실행기 시간 초과 테스트가 `pause`·`breakAt(null)`을 보지 못한다(Review Focus 2).
 - wfi step 테스트가 `QUIET_MS`에 기대고, `ch2Steps` 2~5단계 테스트가 vitest 기본 5초 제한을 쓴다. 느린 CI에서 흔들릴 수 있다.
 - `ch2Steps`의 `beforeEach`가 순수 테스트에도 worker를 띄운다. 2단계 t0 변화와 1단계 pc+4 단언이 없다. `stepAt(1..4)`가 매직 인덱스다.
-- 챕터 화면 컴포넌트(`StepList`, `RegisterTable`, `SiteHome`)에는 렌더 테스트가 없다. Task 8의 표 재배치와 ✓ 버튼은 브라우저(agent-browser)로만 확인했다.
+- 챕터 화면 컴포넌트(`StepList`, `RegisterTable`, `SiteHome`)에는 렌더 테스트가 없다. Task 8의 표 재배치와 ✓ 버튼은 브라우저(agent-browser)로만 확인했다. 최종 리뷰 뒤 고친 실행 중 표시(`EmulatorColumn`)는 타입 검사만 거쳤다.
+- `ch2Steps` 테스트 이름이 주소를 10진수로 찍는다("주소 2147483684: …").
 
 ### 글·데이터
 - 2장 글에 주소가 숫자로 박혀 있다. clock을 다시 빌드하면 글과 화면이 어긋나고 테스트가 잡지 못한다.
@@ -46,11 +47,13 @@
 - 3단계 본문이 아직 3~4줄 목표보다 길다.
 - `steps.ts`: 4단계 이유 주석 두 줄, 한 바퀴 `count: 4`와 테스트 `LOOP_STEPS`의 연결 없음, `BSS_LOOP` 타입 표기 불일치.
 - 1단계는 버튼 이름("명령어 1개 실행")과 안내("명령어 하나를 실행한다")가 아직 같은 말이다. 동작 자체가 그것이라 남겼다.
+- 안내 문구가 에뮬레이터 위치를 "왼쪽"으로 부른다(`tryText.ts`, `StepList.tsx`). lg 아래 폭에서는 에뮬레이터가 위에 쌓인다. "에뮬레이터가"로 줄이면 된다. 사용자가 읽은 문구라 리뷰 뒤에 바꾸지 않았다.
+- `android.mdx`의 외부 링크가 같은 탭에서 열린다. 뒤로 오면 1단계로 돌아갈 수 있다(bfcache는 확인하지 않았다). `ANDROID_COMPONENTS`에 `a`를 `target='_blank' rel='noreferrer'`로 넘기면 된다.
 
 ### 그 밖
 - `?n=02` 같은 비정규형 챕터 번호는 없는 챕터로 본다.
 - 구현 서브에이전트 몇이 Edit 대신 node 스크립트나 `prettier --write`로 파일을 고쳤다. 리뷰에서 diff 내용은 확인했다.
-- 몇몇 커밋 트레일러가 `Claude Sonnet 5.5`다(서브에이전트가 단 것, amend하지 않았다).
+- 커밋 트레일러가 `Claude Sonnet 5.5`(서브에이전트)와 `Claude Fable 5.1`(메인)로 섞여 있다. amend하지 않았다.
 - `pnpm-workspace.yaml`에 `minimumReleaseAgeExclude`(`@eeennsu/web@0.5.0`, `@eeennsu/tokens@0.5.0`)를 넣었다. 두 버전이 pnpm 릴리스 경과 기간 정책에 걸려서다.
 - design-flow 세션 위치: 세션 폴더가 레포 루트면 skill-filter 모드가 `design-flow`·`accessibility`·`animate`를 숨기고(한 단계 아래 `package.json`만 본다), design-flow 훅도 DS 줄을 넣지 않는다. Task 8은 `apps/web`을 작업 폴더로 열었는데도 하네스 cwd가 루트라 스킬 목록에 없었고, `~/.claude/skills/design-flow/SKILL.md`를 직접 읽어 따랐다. 단계 스킬(impeccable polish·audit, animate, accessibility)은 꺼짐으로 라우터가 직접 했다. my-agent-setup 쪽에서 `apps/*` 두 단계 탐색을 넣으면 풀린다.
 

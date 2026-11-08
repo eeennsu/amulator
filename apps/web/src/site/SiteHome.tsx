@@ -3,6 +3,7 @@ import { Badge, Card, Prose, Stack, Text } from '@eeennsu/web';
 import { CHAPTERS, type ChapterEntry } from './chapters';
 
 // DS에 링크 컴포넌트가 없어 링크는 Prose의 a 스타일을 빌린다. 제목 크기는 Prose의 h2(xl)보다 작게 lg로 둔다.
+// 링크는 상대경로다. Pages 하위 경로에서도 깨지지 않는다.
 const ChapterItem = ({ chapter }: { chapter: ChapterEntry }) => {
   const heading = `${chapter.number}장 ${chapter.title}`;
   return (
@@ -15,7 +16,7 @@ const ChapterItem = ({ chapter }: { chapter: ChapterEntry }) => {
         ) : (
           <Prose>
             <h2 className='text-lg'>
-              <a href={`/chapter.html?n=${chapter.number}`}>{heading}</a>
+              <a href={`chapter.html?n=${chapter.number}`}>{heading}</a>
             </h2>
           </Prose>
         )}
@@ -42,7 +43,7 @@ export const SiteHome = () => (
       ))}
     </Stack>
     <Prose>
-      <a href='/emulator.html'>에뮬레이터 열기</a>
+      <a href='emulator.html'>에뮬레이터 열기</a>
     </Prose>
   </Stack>
 );

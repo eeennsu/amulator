@@ -47,7 +47,7 @@ const ChapterRoute = () => {
   return (
     <Stack className='mx-auto max-w-7xl gap-6 p-4 lg:p-8'>
       <Prose>
-        <a href='/'>← 목차</a>
+        <a href='./'>← 목차</a>
       </Prose>
       <Text heading='1' size='2xl'>
         {chapter === undefined ? '없는 챕터다' : `${chapter.number}장 ${chapter.title}`}

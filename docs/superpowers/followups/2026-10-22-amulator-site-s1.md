@@ -17,7 +17,6 @@ S2-1(2장)에서 처리한 항목(공유 스냅샷 저장소, wfi 중 step, rese
 ## S3 공개 전에 확인할 것
 
 - worker `postMessage(message, { transfer })` 옵션 형식을 Safari가 지원하는지 확인한다(2026-10-22 MDN BCD에서 판정하지 못했다). 안 되면 배열 형식으로 되돌린다.
-- `SiteHome`의 `/emulator.html` 절대경로는 Pages 하위 경로에서 깨진다. Vite `base`와 `import.meta.env.BASE_URL`로 처리한다.
 
 ## 다듬기(급하지 않음)
 

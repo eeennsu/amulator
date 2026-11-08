@@ -60,7 +60,7 @@ const RunLine = ({ controller, state, busy }: RunLineProps) => {
         label='한 단계'
         size='sm'
         variant='secondary'
-        disabled={busy}
+        disabled={busy || paused === undefined}
         onClick={() => controller?.send({ type: 'step', count: 1 })}
       />
       <Button
@@ -70,16 +70,18 @@ const RunLine = ({ controller, state, busy }: RunLineProps) => {
         disabled={busy}
         onClick={() => send('resume')}
       />
+      {/* worker는 실행 중에 state를 보내지 않는다. 그때의 pc·idle은 resume 순간 값이라 보이지 않는다. */}
       {state === undefined ? (
         <Text size='sm' tone='muted'>
           시작 상태를 만드는 중
         </Text>
+      ) : paused === undefined ? (
+        <Badge variant='secondary'>실행 중</Badge>
       ) : (
         <>
-          <Text size='sm'>{`pc ${formatHex(state.cpu.pc)}`}</Text>
+          <Text size='sm'>{`pc ${formatHex(paused.cpu.pc)}`}</Text>
           {instruction !== '' && <Text size='sm'>{instruction}</Text>}
-          {!state.paused && <Badge variant='secondary'>실행 중</Badge>}
-          {state.cpu.idle && <Badge variant='secondary'>쉬는 중(wfi)</Badge>}
+          {paused.cpu.idle && <Badge variant='secondary'>쉬는 중(wfi)</Badge>}
         </>
       )}
     </Stack>
@@ -126,6 +128,8 @@ export const EmulatorColumn = ({
       content:
         state === undefined ? (
           <Text tone='muted'>시작 상태를 만드는 중이다</Text>
+        ) : !state.paused ? (
+          <Text tone='muted'>멈추면 레지스터가 보인다</Text>
         ) : (
           <RegisterTable cpu={state.cpu} changed={changed} />
         ),

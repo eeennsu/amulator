@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createStepRunner, type WorkerPort } from '../src/chapter/runner';
-import type { WorkerToMain } from '../src/messages';
+import type { MainToWorker, WorkerToMain } from '../src/messages';
 import { createFakeCanvas, startWorker, type WorkerHarness } from './helpers/workerHarness';
 
 const ENTRY = 0x8000_0000;
@@ -88,11 +88,22 @@ describe('createStepRunner', () => {
 
   it('주소에 오지 않으면 시간 초과로 알리고 다음 준비는 된다', async () => {
     if (worker === undefined) throw new Error('worker가 없다');
-    const slow = createStepRunner(worker, { timeoutMs: SHORT_TIMEOUT_MS });
+    const harness = worker;
+    const sent: MainToWorker[] = [];
+    const spy: WorkerPort = {
+      send: (message) => {
+        sent.push(message);
+        harness.send(message);
+      },
+      waitFor: harness.waitFor,
+    };
+    const slow = createStepRunner(spy, { timeoutMs: SHORT_TIMEOUT_MS });
     // 정렬이 어긋난 주소에는 pc가 오지 않는다
     await expect(slow.prepare({ kind: 'runTo', address: 0x8000_0002, expect: '' })).rejects.toThrow(
       '0x80000002까지 가지 못했다',
     );
+    // 시간 초과는 주소를 지우고 멈춘다. 다음 준비가 pause·reset을 다시 보내므로 이 단언이 없으면 빠져도 통과한다.
+    expect(sent.slice(-2)).toEqual([{ type: 'breakAt', address: null }, { type: 'pause' }]);
     expect((await slow.prepare({ kind: 'entry' })).cpu.pc).toBe(ENTRY);
   });
 });
