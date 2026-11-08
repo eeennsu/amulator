@@ -4,3 +4,8 @@
 body {
   @apply bg-canvas text-fg;
 }
+
+/* 챕터 화면 칸의 canvas는 320x480 속성 비율을 지키며 칸 너비까지 줄어든다. 끌 때 페이지가 스크롤되지 않게 한다. */
+#screen {
+  @apply block h-auto w-full touch-none;
+}

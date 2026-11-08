@@ -1,37 +1,23 @@
-# amulator S2-1(챕터 틀과 2장 CPU) 인계와 후속 목록
+# amulator S2-1(챕터 틀과 2장 CPU) 후속 목록
 
 - 작성일: 2026-11-08
 - 계획: [2026-10-25-amulator-site-s2-ch2.md](../plans/2026-10-25-amulator-site-s2-ch2.md), 설계: [2026-10-25-amulator-site-s2-ch2-design.md](../specs/2026-10-25-amulator-site-s2-ch2-design.md)
-- 작업 위치: Orca 워크트리 `C:/Users/xxx99/orca/workspaces/amulator/feat-s2-ch2`, 브랜치 `eeennsu/feat-s2-ch2`(base `main` e4faa1d). 다른 기기에서는 이 브랜치를 체크아웃한다.
-- 이 파일은 계획서 Task 8 Step 4가 만들라는 "이번에 미룬 것" 파일이기도 하다. Task 8을 마칠 때 처리한 줄을 지운다.
+- 출처: 태스크 리뷰와 사용자 읽기가 남긴 지적 가운데 고치지 않고 미룬 것, 실행 중 내린 판정. [S1 후속 목록](2026-10-22-amulator-site-s1.md)에서 옮겨 온 항목도 있다.
 
 ## 지금 상태
 
-- Task 1~7 완료(`git log e4faa1d..eeennsu/feat-s2-ch2`). 태스크마다 리뷰를 거쳤고 Critical·Important는 모두 고쳤다.
-- 2장은 사실 대조(opus)와 사용자 읽기를 통과해 `chapters.ts`에서 `status: 'reviewed'`다(649ba25).
-- 사용자 읽기 중에 계획 밖으로 더한 것:
-  - 루트 DS 배경·글자색, canvas 크기와 표면, `<More>` 문단 간격, `usePeek` 대기·실패 구분(4fc9665)
-  - 2장 MDX 전체에 korean-humanizer(3047ae4, b743d09)
-  - 해 보기 상자: "해 보기 n/N", 동작별 안내, "✓ 방금" 줄, 완료 문구. 버튼 이름에서 "단계"를 뺐고 이동 버튼은 "↺ 처음 상태로"·"다음: {제목} →" 보조 버튼이다(97ddab9, 433c90c).
-  - 글 위계: 카드 제목 h2, 해 보기 h3, 보조 글 `text-fg-muted`(e8b7b36)
-- `pnpm typecheck`, `lint`, `format:check`, `test`(web 91, mcp 52)가 통과한다. 플러그인 스모크는 Task 4에서 통과했고 그 뒤로 다시 돌리지 않았다.
+- Task 1~8 완료. 2장은 사실 대조(opus)와 사용자 읽기를 통과해 `chapters.ts`에서 `status: 'reviewed'`다.
+- Task 8(design-flow 디자인 마무리, 2026-11-08): 목차 폭·링크, 챕터 두 열 비율 3:2, 터미널 폭, 레지스터 표 두 항목씩, ✓ 카드를 ghost Button으로, 중복 문구 정리. 마무리 검사(임의값·hex·fontFamily·스케일 밖 간격) 0건. 브랜드 색은 사용자 결정으로 DS 기본 파랑을 그대로 쓴다(`site.css` 재선언 없음). DS 피드백은 `docs/ds-feedback.md`.
+- `pnpm typecheck`, `lint`, `format:check`, `test`, `build:plugin`, `smoke:plugin`, `e2e`가 통과한다(2026-11-08).
 
-## 다음에 할 일 (순서대로)
+## 다음 챕터 전에 정할 것
 
-1. **Task 8 디자인 마무리** — 사용자가 `apps/web`을 작업 폴더로 한 세션을 열고 design-flow를 돌린다. 서브에이전트에 맡기지 않는다. 브랜드 색을 고르는 자리에서는 사용자에게 묻는다. 계획서 Task 8 Step 1~5를 따른다.
-2. **최종 전체 리뷰** — Task 8 뒤에 opus로 `git merge-base main HEAD..HEAD`를 리뷰한다. 아래 "미룬 지적"을 함께 넘겨 병합 전에 고칠 것을 가른다.
-3. **브랜치 마무리** — `superpowers:finishing-a-development-branch`. Orca 워크트리는 `orca worktree rm`으로 지우고 브랜치는 그 뒤에 지운다.
+- 장치 접근 기록 창(256)이 그림판의 폴링 읽기로 가득 찬다. `trace`에 장치·종류 필터를 두거나 연속된 같은 접근을 합친다.
+- `peekMemory`가 부호 있는 주소를 RangeError로 거부한다. 첫 hex 입력 위젯 때 `>>> 0`으로 정규화한다.
+- 한 챕터 안에서 단계마다 다른 프로그램으로 바꾸는 경우(`step.program`이 바뀌어 `useEmulator`가 다시 마운트되는 경로)를 확인하지 않았다. 2장은 모두 clock이다.
+- 터미널은 놀이터와 같은 60열 12줄(`terminal.ts`)이다. 챕터마다 크기를 달리 하려면 `createTerminal`에 크기 옵션을 더한다.
 
-## Task 8(design-flow)이 함께 볼 것
-
-- `EmulatorColumn.tsx` 화면 칸의 `[&>canvas]:h-auto`·`[&>canvas]:w-full`은 Tailwind 임의 변형이다. 마무리 검사의 "임의값 0건"에 걸린다. 화면 칸 옵션으로 canvas에 클래스를 넘기면 없앨 수 있다.
-- 접힌 ✓ 카드는 busy 중에도 활성처럼 보인다(DS `Collapsible`에 disabled가 없다). `StepList.tsx`의 `<h2>`가 `Collapsible` 루트(div)를 감싸 HTML 중첩 규칙에 어긋난다. `<div role='heading' aria-level={2}>`로 바꾸면 된다.
-- "더 읽기" 트리거 이름이 모든 `<More>`와 안드로이드 상자에서 같다.
-- 해 보기 안내와 버튼 글이 같은 말을 두 번 한다(예: "명령어 2개").
-- 목차의 `<a>` 링크에 DS 스타일이 없다. 준비 중 챕터 제목은 heading이 아니다.
-- 터미널 크기, 바뀐 값 강조 모양, 레지스터·메모리 표 모양, 두 열 비율, 간격은 아직 정하지 않았다.
-
-## 미룬 지적 (최종 리뷰가 분류한다)
+## 미룬 지적
 
 ### 동작
 - 메시지 계약: `breakpoint`는 `start`·`reset` 메시지가 도착할 때가 아니라 큐의 작업이 돌 때 지워진다. `messages.ts` 주석 문구와 어긋난다. reset 뒤 `booted` 전에 `breakAt`을 보내면 사라진다(실행기는 `booted` 뒤에 보내 안전하다).
@@ -44,6 +30,7 @@
 - pc가 RAM 마지막 16바이트에 있으면 메모리 탭의 48바이트 읽기가 RAM 끝을 넘어 "읽을 수 없다"가 보인다.
 - 실행 줄은 읽는 동안 pc만 있고 역어셈블이 비는 순간이 있다(의도한 선택).
 - pc 대상 `setRegister` 안내는 10진수, 결과 줄은 16진수다.
+- 5단계처럼 실행 중 상태에서 시작하는 단계는 첫 멈춤(trap_entry)에서 바뀐 값 강조가 없다. 강조는 연속한 멈춘 상태 둘을 비교하기 때문이다. 글은 값이 "적힌다"고만 말해 어긋나지는 않는다.
 
 ### 테스트
 - 트랩으로 mtvec에 들어간 뒤 `breakAt`에 걸리는 경우를 지키는 core 테스트가 없다. `run`과 `runUntil` 루프 본문이 두 벌이다.
@@ -51,18 +38,21 @@
 - 실행기 시간 초과 테스트가 `pause`·`breakAt(null)`을 보지 못한다(Review Focus 2).
 - wfi step 테스트가 `QUIET_MS`에 기대고, `ch2Steps` 2~5단계 테스트가 vitest 기본 5초 제한을 쓴다. 느린 CI에서 흔들릴 수 있다.
 - `ch2Steps`의 `beforeEach`가 순수 테스트에도 worker를 띄운다. 2단계 t0 변화와 1단계 pc+4 단언이 없다. `stepAt(1..4)`가 매직 인덱스다.
+- 챕터 화면 컴포넌트(`StepList`, `RegisterTable`, `SiteHome`)에는 렌더 테스트가 없다. Task 8의 표 재배치와 ✓ 버튼은 브라우저(agent-browser)로만 확인했다.
 
 ### 글·데이터
 - 2장 글에 주소가 숫자로 박혀 있다. clock을 다시 빌드하면 글과 화면이 어긋나고 테스트가 잡지 못한다.
 - 안드로이드 상자의 "하이퍼바이저가 없을 때" 줄은 아키텍처가 다른 경우를 담지 않는다.
 - 3단계 본문이 아직 3~4줄 목표보다 길다.
 - `steps.ts`: 4단계 이유 주석 두 줄, 한 바퀴 `count: 4`와 테스트 `LOOP_STEPS`의 연결 없음, `BSS_LOOP` 타입 표기 불일치.
+- 1단계는 버튼 이름("명령어 1개 실행")과 안내("명령어 하나를 실행한다")가 아직 같은 말이다. 동작 자체가 그것이라 남겼다.
 
 ### 그 밖
 - `?n=02` 같은 비정규형 챕터 번호는 없는 챕터로 본다.
 - 구현 서브에이전트 몇이 Edit 대신 node 스크립트나 `prettier --write`로 파일을 고쳤다. 리뷰에서 diff 내용은 확인했다.
 - 몇몇 커밋 트레일러가 `Claude Sonnet 5.5`다(서브에이전트가 단 것, amend하지 않았다).
 - `pnpm-workspace.yaml`에 `minimumReleaseAgeExclude`(`@eeennsu/web@0.5.0`, `@eeennsu/tokens@0.5.0`)를 넣었다. 두 버전이 pnpm 릴리스 경과 기간 정책에 걸려서다.
+- design-flow 세션 위치: 세션 폴더가 레포 루트면 skill-filter 모드가 `design-flow`·`accessibility`·`animate`를 숨기고(한 단계 아래 `package.json`만 본다), design-flow 훅도 DS 줄을 넣지 않는다. Task 8은 `apps/web`을 작업 폴더로 열었는데도 하네스 cwd가 루트라 스킬 목록에 없었고, `~/.claude/skills/design-flow/SKILL.md`를 직접 읽어 따랐다. 단계 스킬(impeccable polish·audit, animate, accessibility)은 꺼짐으로 라우터가 직접 했다. my-agent-setup 쪽에서 `apps/*` 두 단계 탐색을 넣으면 풀린다.
 
 ## 실행 중 내린 판정 (틀렸으면 되돌릴 것)
 
@@ -73,10 +63,6 @@
 5. 사용자 읽기를 막는 연결 버그(배경·canvas·문단 간격·`usePeek`)는 Task 8 전에 고쳤다. 시각 결정은 남겼다.
 6. 설계·계획서가 부르는 버튼 이름 "[이 단계 처음으로]"·"[다음 단계]"는 화면에서 "↺ 처음 상태로"·"다음: {제목} →"다. 사용자가 고른 방향이다.
 7. 해 보기 피드백에서 `setRegister`는 pc 구간 없이 레지스터 새 값만 보이고, 실패하면 "방금" 줄을 지운다.
-
-## 추천 스킬
-
-- Task 8 세션(`apps/web`): design-flow, `impeccable`(웹 UI 플러그인, 이 레포에서 켜져 있다), `agent-browser`(화면 확인), `conventions`(코드 고칠 때). 스킬이 목록에 없으면 `node ~/my-agent-setup/scripts/fix-plugin-symlinks.mjs`.
-- 최종 리뷰: `superpowers:requesting-code-review`(opus).
-- 마무리: `superpowers:finishing-a-development-branch`, `superpowers:verification-before-completion`.
-- 후속 목록 정리 때 이 파일과 [S1 후속 목록](2026-10-22-amulator-site-s1.md)을 함께 본다. S1 목록에서 이번에 처리한 항목(공유 스냅샷 저장소, wfi 중 step, reset 뒤 booted 계약, DS Tabs와 에뮬레이터 화면 위치)은 Task 8 Step 4에서 지운다.
+8. Task 8 권장안으로 진행한 시각 결정: 목차 `max-w-3xl`, 챕터 `max-w-7xl`에 `lg:grid-cols-5`(에뮬레이터 3 : 단계 2), 페이지 여백 `p-4 lg:p-8`, 바뀐 값 강조는 `font-semibold text-fg-brand` 유지, 화면 칸 `rounded-lg`, 터미널은 `w-fit` + `border`. 접힌 ✓ 단계는 Collapsible 대신 `variant='ghost'` Button(`disabled={busy}`), 안드로이드 상자 트리거는 "어떻게 다른지 읽기".
+9. 링크는 DS에 Link가 없어 `Prose`의 `a` 스타일을 빌린다(목차 제목, "에뮬레이터 열기", "← 목차"). 새 클래스나 로컬 컴포넌트를 만들지 않았다.
+10. 해 보기 버튼 이름에서 괄호 안 명령어 수("(명령어 2개)")를 뺐다. 안내 줄이 같은 수를 말한다. 3단계 글의 "[한 바퀴 더 (명령어 4개 실행)]"도 "[한 바퀴 더]"로 맞췄다.

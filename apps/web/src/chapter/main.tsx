@@ -1,4 +1,4 @@
-import { Stack, Text } from '@eeennsu/web';
+import { Prose, Stack, Text } from '@eeennsu/web';
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
@@ -45,13 +45,15 @@ const ChapterRoute = () => {
   const chapter = CHAPTERS.find((entry) => String(entry.number) === n);
 
   return (
-    <Stack className='gap-4 p-4'>
-      <Text heading='1' size='xl'>
+    <Stack className='mx-auto max-w-7xl gap-6 p-4 lg:p-8'>
+      <Prose>
+        <a href='/'>← 목차</a>
+      </Prose>
+      <Text heading='1' size='2xl'>
         {chapter === undefined ? '없는 챕터다' : `${chapter.number}장 ${chapter.title}`}
       </Text>
       {chapter !== undefined &&
         (chapter.load === undefined ? <Text>준비 중</Text> : <LoadedChapter load={chapter.load} />)}
-      <a href='/'>목차로 돌아가기</a>
     </Stack>
   );
 };

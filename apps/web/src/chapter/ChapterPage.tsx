@@ -184,8 +184,8 @@ export const ChapterPage = ({ content: { steps, Android } }: Props) => {
       : '';
 
   return (
-    <Box className='grid gap-6 lg:grid-cols-3'>
-      <Box className='min-w-0 lg:col-span-2'>
+    <Box className='grid gap-6 lg:grid-cols-5'>
+      <Box className='min-w-0 lg:col-span-3'>
         <EmulatorColumn
           screenRef={screenRef}
           terminalRef={terminalRef}
@@ -200,7 +200,7 @@ export const ChapterPage = ({ content: { steps, Android } }: Props) => {
           notice={visibleNotice}
         />
       </Box>
-      <Box className='min-w-0'>
+      <Box className='min-w-0 lg:col-span-2'>
         <Stack className='gap-6'>
           <StepList
             steps={steps}
@@ -218,7 +218,8 @@ export const ChapterPage = ({ content: { steps, Android } }: Props) => {
               <Text heading='2' size='xl'>
                 진짜 안드로이드 에뮬레이터는
               </Text>
-              <Collapsible label='더 읽기'>
+              {/* 단계 카드의 "더 읽기"와 이름이 겹치지 않게 한다. 트리거의 px-3만큼 당겨 제목과 줄을 맞춘다. */}
+              <Collapsible label='어떻게 다른지 읽기' className='-mx-3'>
                 <Prose className='text-fg-muted'>
                   <Android components={ANDROID_COMPONENTS} />
                 </Prose>

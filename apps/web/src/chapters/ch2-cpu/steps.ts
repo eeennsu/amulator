@@ -44,8 +44,8 @@ export const CH2_STEPS: readonly StepPlan[] = [
     start: { kind: 'entry' }, // 진입 주소(0x80000000)가 곧 `la sp` 앞이다
     tab: 'registers',
     actions: [
-      { label: 'la sp 실행 (명령어 2개)', kind: 'step', count: 2 }, // auipc sp + addi sp
-      { label: 'la t0 실행 (명령어 2개)', kind: 'step', count: 2 }, // auipc t0 + addi t0
+      { label: 'la sp 실행', kind: 'step', count: 2 }, // auipc sp + addi sp
+      { label: 'la t0 실행', kind: 'step', count: 2 }, // auipc t0 + addi t0
       { label: 'csrw mtvec 실행', kind: 'step', count: 1 },
     ],
   },
@@ -60,7 +60,7 @@ export const CH2_STEPS: readonly StepPlan[] = [
       { label: 'sw 실행', kind: 'step', count: 1 },
       { label: 'addi 실행', kind: 'step', count: 1 },
       { label: 'j 실행', kind: 'step', count: 1 },
-      { label: '한 바퀴 더 (명령어 4개 실행)', kind: 'step', count: 4 },
+      { label: '한 바퀴 더', kind: 'step', count: 4 },
     ],
   },
   {

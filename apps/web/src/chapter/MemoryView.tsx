@@ -43,7 +43,7 @@ export const MemoryView = ({ controller, state }: Props) => {
             const isPc = offset >= 0 && offset < INSTRUCTION_BYTES;
             return (
               <span key={index}>
-                <Emphasis on={isPc} hint='pc'>
+                <Emphasis on={isPc} hint={offset === 0 ? 'pc' : undefined}>
                   {formatHex(byte, BYTE_HEX_WIDTH)}
                 </Emphasis>{' '}
               </span>

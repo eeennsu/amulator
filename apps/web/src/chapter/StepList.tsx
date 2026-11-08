@@ -23,7 +23,7 @@ const Try = () => {
   if (state === undefined) throw new Error('Try는 단계 카드 안에서만 쓴다');
   const action = state.actions[state.done];
   return (
-    <Box className='rounded-xl border border-border p-4'>
+    <Box className='rounded-lg border border-border p-4'>
       <Stack className='gap-2'>
         <Stack direction='row' align='center' className='gap-2'>
           <Text heading='3' size='lg'>
@@ -52,14 +52,15 @@ const Try = () => {
 };
 
 // Prose의 문단 간격은 직계 자식에만 걸린다. Collapsible 패널 안의 문단은 직계가 아니라서 한 겹 더 Prose로 감싼다.
+// 트리거와 패널의 px-3만큼 당겨 접힌 글이 본문 문단과 같은 줄에서 시작하게 한다.
 const More = ({ children }: { children?: ReactNode }) => (
-  <Collapsible label='더 읽기'>
+  <Collapsible label='더 읽기' className='-mx-3'>
     <Prose className='text-fg-muted'>{children}</Prose>
   </Collapsible>
 );
 
 const Quiz = ({ question, children }: { question: string; children?: ReactNode }) => (
-  <Collapsible label={question}>
+  <Collapsible label={question} className='-mx-3'>
     <Prose className='text-fg-muted'>{children}</Prose>
   </Collapsible>
 );
@@ -129,18 +130,17 @@ export const StepList = ({
       }
       if (index <= reached) {
         return (
-          <Card key={index}>
-            {/* 접힌 제목도 제목 목차에 남도록 h2로 감싼다. 패널은 비어 있어 제목에 본문이 섞이지 않는다. */}
+          // 버튼 패딩(px-4)과 합쳐 다른 카드의 p-6과 글 시작 위치를 맞춘다.
+          <Card key={index} className='p-2'>
+            {/* 접힌 제목도 제목 목차에 남도록 h2로 감싼다. 다시 펼치는 버튼이라 시작 상태를 만드는 동안은 비활성이다. */}
             <h2>
-              <Collapsible
+              <Button
                 label={`✓ ${step.title}`}
-                open={false}
-                onOpenChange={(open) => {
-                  if (open && !busy) onSelect(index);
-                }}
-              >
-                {null}
-              </Collapsible>
+                variant='ghost'
+                disabled={busy}
+                className='w-full justify-start'
+                onClick={() => onSelect(index)}
+              />
             </h2>
           </Card>
         );

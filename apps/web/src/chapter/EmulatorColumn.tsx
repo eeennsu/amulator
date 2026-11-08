@@ -140,12 +140,18 @@ export const EmulatorColumn = ({
 
   return (
     <Stack className='gap-4'>
-      {/* canvas는 320x480 속성 그대로의 비율로, 슬롯보다 크지 않게 줄어든다. 비어 있어도 화면으로 읽히게 표면 색을 깐다. */}
+      {/* canvas 크기는 site.css의 #screen이 정한다. 비어 있어도 화면으로 읽히게 표면 색을 깐다. */}
       <div
         ref={screenRef}
-        className='w-full max-w-xs bg-surface-muted [&>canvas]:h-auto [&>canvas]:w-full'
+        role='img'
+        aria-label='에뮬레이터 화면'
+        className='w-full max-w-xs overflow-hidden rounded-lg bg-surface-muted'
       />
-      <div ref={terminalRef} />
+      {/* xterm은 열 수만큼만 그리므로 폭을 내용에 맞추고, 좁은 화면에서는 가로로 넘긴다. */}
+      <div
+        ref={terminalRef}
+        className='w-fit max-w-full overflow-x-auto rounded-sm border border-border'
+      />
       <Text size='sm' tone='muted'>
         {status}
       </Text>
