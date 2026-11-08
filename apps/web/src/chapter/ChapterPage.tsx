@@ -1,5 +1,5 @@
 import { Box, Card, CodeBlock, Collapsible, Prose, Stack, Text } from '@eeennsu/web';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import type { CpuView } from '@amulator/core/inspect';
 
@@ -12,7 +12,12 @@ import { StepList } from './StepList';
 import { resultText } from './tryText';
 import type { ChapterContent, ChapterStep, InspectTab, TryAction } from './types';
 
-const ANDROID_COMPONENTS = { CodeBlock };
+// 비교 상자 끝의 출처 목록은 본문보다 한 단계 작고 흐리게 둔다.
+const Sources = ({ children }: { children?: ReactNode }) => (
+  <div className='space-y-2 text-sm text-fg-muted'>{children}</div>
+);
+
+const ANDROID_COMPONENTS = { CodeBlock, Sources };
 const NO_CHANGES: ReadonlySet<string> = new Set();
 const UNKNOWN_ERROR = '알 수 없는 오류가 났다';
 
@@ -183,8 +188,9 @@ export const ChapterPage = ({ content: { steps, Android } }: Props) => {
       ? notice.text
       : '';
 
+  // 한국어는 어절 단위로 줄을 바꾸고, 그래도 넘치는 긴 코드 조각만 글자 단위로 끊는다.
   return (
-    <Box className='grid gap-6 lg:grid-cols-5'>
+    <Box className='grid gap-6 break-keep wrap-break-word lg:grid-cols-5'>
       <Box className='min-w-0 lg:col-span-3'>
         <EmulatorColumn
           screenRef={screenRef}
@@ -220,7 +226,7 @@ export const ChapterPage = ({ content: { steps, Android } }: Props) => {
               </Text>
               {/* 단계 카드의 "더 읽기"와 이름이 겹치지 않게 한다. 트리거의 px-3만큼 당겨 제목과 줄을 맞춘다. */}
               <Collapsible label='어떻게 다른지 읽기' className='-mx-3'>
-                <Prose className='text-fg-muted'>
+                <Prose>
                   <Android components={ANDROID_COMPONENTS} />
                 </Prose>
               </Collapsible>

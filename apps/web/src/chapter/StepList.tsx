@@ -1,10 +1,25 @@
-import { Badge, Box, Button, Card, CodeBlock, Collapsible, Prose, Stack, Text } from '@eeennsu/web';
+import {
+  Badge,
+  Box,
+  Button,
+  Card,
+  CodeBlock,
+  Collapsible,
+  Icon,
+  Prose,
+  Stack,
+  Text,
+} from '@eeennsu/web';
 import { createContext, useContext, type ReactNode } from 'react';
 
 import { hintText } from './tryText';
 import type { ChapterStep, TryAction } from './types';
 
-const ALL_DONE_TEXT = '다 해 봤다. 왼쪽 값을 살펴보고 아래 질문을 풀어 보자.';
+const ALL_DONE_TEXT = '다 해 봤다. 에뮬레이터의 값을 살펴보고 아래 질문을 풀어 보자.';
+const END_TEXT = '이 장의 단계를 모두 마쳤다.';
+
+// 해 보기·확인 질문은 위 글과 구분선으로 나눈다. 카드 안에 상자를 겹치지 않는다.
+const SECTION_CLASS = 'mt-8 border-t border-border pt-6';
 
 // [해 보기]가 읽는, 펼친 단계의 동작 목록이다. MDX의 Try는 props 없이 이 context에서 다음 동작을 찾는다.
 type TryState = {
@@ -23,13 +38,13 @@ const Try = () => {
   if (state === undefined) throw new Error('Try는 단계 카드 안에서만 쓴다');
   const action = state.actions[state.done];
   return (
-    <Box className='rounded-lg border border-border p-4'>
-      <Stack className='gap-2'>
-        <Stack direction='row' align='center' className='gap-2'>
+    <Box className={SECTION_CLASS}>
+      <Stack className='gap-3'>
+        <Stack direction='row' align='center' justify='between' className='gap-2'>
           <Text heading='3' size='lg'>
             해 보기
           </Text>
-          <Badge>{`${state.done}/${state.actions.length}`}</Badge>
+          <Badge>{`${state.done}/${state.actions.length} 해 봄`}</Badge>
         </Stack>
         <Text size='sm' tone='muted'>
           {action === undefined ? ALL_DONE_TEXT : hintText(action)}
@@ -51,21 +66,61 @@ const Try = () => {
   );
 };
 
+// 접어 둔 글은 흐린 색과 왼쪽 줄(Prose 인용문과 같은 모양)로 본문과 가른다.
 // Prose의 문단 간격은 직계 자식에만 걸린다. Collapsible 패널 안의 문단은 직계가 아니라서 한 겹 더 Prose로 감싼다.
+const Aside = ({ children }: { children?: ReactNode }) => (
+  <Prose className='border-s-4 border-border ps-4 text-fg-muted'>{children}</Prose>
+);
+
 // 트리거와 패널의 px-3만큼 당겨 접힌 글이 본문 문단과 같은 줄에서 시작하게 한다.
 const More = ({ children }: { children?: ReactNode }) => (
   <Collapsible label='더 읽기' className='-mx-3'>
-    <Prose className='text-fg-muted'>{children}</Prose>
+    <Aside>{children}</Aside>
   </Collapsible>
 );
 
 const Quiz = ({ question, children }: { question: string; children?: ReactNode }) => (
   <Collapsible label={question} className='-mx-3'>
-    <Prose className='text-fg-muted'>{children}</Prose>
+    <Aside>{children}</Aside>
   </Collapsible>
 );
 
-const MDX_COMPONENTS = { Try, More, Quiz, CodeBlock };
+// 한 단계의 Quiz들을 "확인 질문" 구역 하나로 묶는다.
+const Checks = ({ children }: { children?: ReactNode }) => (
+  <Box className={SECTION_CLASS}>
+    <Stack className='gap-2'>
+      <Text heading='3' size='lg'>
+        확인 질문
+      </Text>
+      <div>{children}</div>
+    </Stack>
+  </Box>
+);
+
+const MDX_COMPONENTS = { Try, More, Quiz, Checks, CodeBlock };
+
+type StepState = 'done' | 'current' | 'upcoming';
+
+const MARKER_CLASS = 'flex size-6 shrink-0 items-center justify-center rounded-full';
+
+const Marker = ({ state, number }: { state: StepState; number: number }) => {
+  if (state === 'done') {
+    return (
+      <Box className={`${MARKER_CLASS} bg-brand`}>
+        <Icon name='check' size='sm' className='text-fg-on-brand' />
+      </Box>
+    );
+  }
+  return (
+    <Box
+      className={`${MARKER_CLASS} ${state === 'current' ? 'border-2 border-brand' : 'border border-border'}`}
+    >
+      <Text size='sm' tone='muted' className={state === 'current' ? 'text-fg-brand' : undefined}>
+        {String(number)}
+      </Text>
+    </Box>
+  );
+};
 
 type Props = {
   steps: readonly ChapterStep[];
@@ -81,77 +136,120 @@ type Props = {
   onTry: (action: TryAction) => void;
 };
 
-export const StepList = ({
+const CurrentStep = ({
   steps,
   current,
-  reached,
   done,
   last,
   busy,
   onSelect,
   onRestart,
   onTry,
-}: Props) => (
-  <Stack className='gap-4'>
-    {steps.map((step, index) => {
-      if (index === current) {
-        const { Body } = step;
-        const nextStep = steps[index + 1];
-        return (
-          <Card key={index}>
-            <Stack className='gap-4'>
-              <Text heading='2' size='xl'>
-                {step.title}
-              </Text>
-              <Prose>
-                <TryContext value={{ actions: step.actions, done, last, busy, onTry }}>
-                  <Body components={MDX_COMPONENTS} />
-                </TryContext>
-              </Prose>
-              <Stack direction='row' wrap className='gap-2'>
-                <Button
-                  label='↺ 처음 상태로'
-                  variant='secondary'
-                  disabled={busy}
-                  onClick={onRestart}
-                />
-                {nextStep !== undefined && (
-                  <Button
-                    label={`다음: ${nextStep.title} →`}
-                    variant='secondary'
-                    disabled={busy}
-                    onClick={() => onSelect(index + 1)}
-                  />
-                )}
-              </Stack>
-            </Stack>
-          </Card>
-        );
-      }
-      if (index <= reached) {
-        return (
-          // 버튼 패딩(px-4)과 합쳐 다른 카드의 p-6과 글 시작 위치를 맞춘다.
-          <Card key={index} className='p-2'>
-            {/* 접힌 제목도 제목 목차에 남도록 h2로 감싼다. 다시 펼치는 버튼이라 시작 상태를 만드는 동안은 비활성이다. */}
-            <h2>
+}: Omit<Props, 'reached'>) => {
+  const step = steps[current];
+  if (step === undefined) throw new Error(`${current}번 단계가 없다`);
+  const { Body } = step;
+  const nextStep = steps[current + 1];
+  const allDone = done >= step.actions.length;
+  return (
+    <div aria-current='step'>
+      <Card>
+        <Stack className='gap-4'>
+          <Stack direction='row' align='center' className='gap-4'>
+            <Marker state='current' number={current + 1} />
+            <Text heading='2' size='xl'>
+              {step.title}
+            </Text>
+          </Stack>
+          <Prose>
+            <TryContext value={{ actions: step.actions, done, last, busy, onTry }}>
+              <Body components={MDX_COMPONENTS} />
+            </TryContext>
+          </Prose>
+          <Stack direction='row' align='center' wrap className='gap-2'>
+            {nextStep !== undefined && (
               <Button
-                label={`✓ ${step.title}`}
-                variant='ghost'
+                label={`다음: ${nextStep.title} →`}
+                variant={allDone ? 'primary' : 'secondary'}
                 disabled={busy}
-                className='w-full justify-start'
-                onClick={() => onSelect(index)}
+                onClick={() => onSelect(current + 1)}
               />
-            </h2>
-          </Card>
-        );
-      }
-      return (
-        <Card key={index}>
-          <Text heading='2' tone='muted'>
-            {step.title}
-          </Text>
-        </Card>
-      );
-    })}
+            )}
+            {nextStep === undefined && allDone && (
+              <>
+                <Text tone='muted'>{END_TEXT}</Text>
+                {/* DS에 링크 컴포넌트가 없어 Prose의 a 스타일을 빌린다(목차 링크와 같다). */}
+                <Prose>
+                  <a href='./'>← 목차</a>
+                </Prose>
+              </>
+            )}
+            <Button label='↺ 처음 상태로' variant='ghost' disabled={busy} onClick={onRestart} />
+          </Stack>
+        </Stack>
+      </Card>
+    </div>
+  );
+};
+
+// 지난 단계는 다시 펼치는 버튼이라 시작 상태를 만드는 동안은 비활성이다. 접힌 제목도 제목 목차에 남도록 h2로 감싼다.
+const DoneRow = ({
+  title,
+  number,
+  busy,
+  onOpen,
+}: {
+  title: string;
+  number: number;
+  busy: boolean;
+  onOpen: () => void;
+}) => (
+  <Stack direction='row' align='center' className='gap-4 px-6'>
+    <Marker state='done' number={number} />
+    <h2 className='min-w-0 flex-1'>
+      <span className='sr-only'>완료: </span>
+      {/* 버튼 안쪽 px-4만큼 당겨 남은 단계 제목과 같은 줄에서 시작하게 한다. */}
+      <Button
+        label={title}
+        variant='ghost'
+        disabled={busy}
+        className='-ms-4 w-full justify-start'
+        onClick={onOpen}
+      />
+    </h2>
   </Stack>
 );
+
+const UpcomingRow = ({ title, number }: { title: string; number: number }) => (
+  <Stack direction='row' align='center' className='gap-4 px-6 py-2'>
+    <Marker state='upcoming' number={number} />
+    <h2>
+      <span className='sr-only'>남은 단계: </span>
+      <Text tone='muted'>{title}</Text>
+    </h2>
+  </Stack>
+);
+
+// 지금 단계만 카드로 펼치고, 지난·남은 단계는 표면 없이 번호와 제목 한 줄로 둔다.
+export const StepList = (props: Props) => {
+  const { steps, current, reached, busy, onSelect } = props;
+  return (
+    <Stack className='gap-2'>
+      {steps.map((step, index) => {
+        if (index === current) return <CurrentStep key={index} {...props} />;
+        if (index <= reached) {
+          return (
+            <DoneRow
+              key={index}
+              title={step.title}
+              number={index + 1}
+              busy={busy}
+              onOpen={() => onSelect(index)}
+            />
+          );
+        }
+        return <UpcomingRow key={index} title={step.title} number={index + 1} />;
+      })}
+    </Stack>
+  );
+};

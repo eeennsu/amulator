@@ -5,34 +5,35 @@ import { hintText, resultText } from '../src/chapter/tryText';
 const A2 = 12;
 const REGISTER_COUNT = 32;
 
-const view = (pc: number, a2 = 0, paused = true) => {
+const view = (pc: number, a2 = 0, paused = true, mepc = 0) => {
   const x = Array.from({ length: REGISTER_COUNT }, () => 0);
   x[A2] = a2;
-  return { paused, cpu: { pc, x } };
+  const csr = { mstatus: 0, mtvec: 0, mepc, mcause: 0, mie: 0, mip: 0 };
+  return { paused, cpu: { pc, x, csr } };
 };
 
 describe('hintText', () => {
   it('명령어 하나를 실행하는 동작', () => {
     expect(hintText({ label: 'x', kind: 'step', count: 1 })).toBe(
-      '누르면 왼쪽 에뮬레이터가 명령어 하나를 실행한다',
+      '누르면 에뮬레이터가 명령어 하나를 실행한다',
     );
   });
 
   it('명령어 여럿을 실행하는 동작', () => {
     expect(hintText({ label: 'x', kind: 'step', count: 4 })).toBe(
-      '누르면 왼쪽 에뮬레이터가 명령어 4개를 실행한다',
+      '누르면 에뮬레이터가 명령어 4개를 실행한다',
     );
   });
 
   it('주소까지 실행하는 동작은 8자리 16진수를 쓴다', () => {
     expect(hintText({ label: 'x', kind: 'runTo', address: 0x8000_004c, expect: 'addi' })).toBe(
-      '누르면 왼쪽 에뮬레이터가 8000004c에 올 때까지 실행하고 멈춘다',
+      '누르면 에뮬레이터가 8000004c에 올 때까지 실행하고 멈춘다',
     );
   });
 
   it('레지스터를 바꾸는 동작은 ABI 이름과 값을 쓴다', () => {
     expect(hintText({ label: 'x', kind: 'setRegister', target: A2, value: 12_345 })).toBe(
-      '누르면 왼쪽 레지스터 a2 값을 12345로 바꾼다',
+      '누르면 레지스터 a2 값을 12345로 바꾼다',
     );
   });
 });
@@ -42,6 +43,13 @@ describe('resultText', () => {
     const action = { label: '명령어 1개 실행', kind: 'step', count: 1 } as const;
     expect(resultText(action, view(0x8000_0000), view(0x8000_0004))).toBe(
       '✓ 방금: 명령어 1개 실행 — pc 80000000 → 80000004',
+    );
+  });
+
+  it('pc 밖에 바뀐 레지스터와 CSR은 보이는 이름으로 덧붙인다', () => {
+    const action = { label: '명령어 3개 실행', kind: 'step', count: 3 } as const;
+    expect(resultText(action, view(0x8000_0000), view(0x8000_000c, 7, true, 0x8000_0040))).toBe(
+      '✓ 방금: 명령어 3개 실행 — pc 80000000 → 8000000c · 바뀐 값: a2, mepc',
     );
   });
 
@@ -64,7 +72,7 @@ describe('resultText', () => {
       target: 'pc',
       value: 0x8000_0100,
     } as const;
-    expect(hintText(action)).toBe('누르면 왼쪽 레지스터 pc 값을 2147483904로 바꾼다');
+    expect(hintText(action)).toBe('누르면 레지스터 pc 값을 2147483904로 바꾼다');
     expect(resultText(action, view(0x8000_0000), view(0x8000_0100))).toBe(
       '✓ 방금: pc 고치기 — pc 80000100',
     );
@@ -72,7 +80,7 @@ describe('resultText', () => {
 
   it('표 밖 번호는 x{번호} 이름으로 보인다', () => {
     const action = { label: 'x40 고치기', kind: 'setRegister', target: 40, value: 1 } as const;
-    expect(hintText(action)).toBe('누르면 왼쪽 레지스터 x40 값을 1로 바꾼다');
+    expect(hintText(action)).toBe('누르면 레지스터 x40 값을 1로 바꾼다');
     expect(resultText(action, view(0x8000_0000), view(0x8000_0000))).toBe(
       '✓ 방금: x40 고치기 — x40 00000000',
     );
