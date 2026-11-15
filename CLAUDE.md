@@ -8,4 +8,4 @@
 - `packages/core/src`는 순수 ES2023 코드만 쓴다. tsconfig(`lib: ["ES2023"]`, `types: []`)가 DOM과 Node API를 막고, 테스트 코드만 Node API를 쓴다.
 - 보조 스크립트는 node `.mjs`로 쓴다. 윈도우와 맥에서 같은 명령으로 돈다.
 - @~/my-agent-setup/docs/imports/web.md
-- 디자인 작업(design-flow)은 `apps/web`에서 세션을 연다. 훅이 처음 만나는 `package.json`만 본다.
+- 디자인 작업(design-flow)도 레포 루트에서 세션을 연다. 훅과 skill-filter가 워크스페이스 멤버의 DS 의존성을 본다.
